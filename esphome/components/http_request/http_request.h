@@ -196,7 +196,7 @@ template<typename... Ts> class HttpRequestSendAction : public Action<Ts...> {
     size_t content_length = container->content_length;
     size_t max_length = std::min(content_length, this->max_response_buffer_size_);
 
-    // Returned header Content_Length = -1 is no helpful so we need
+    // Returned header Content_Length = -1 is not helpful so we need
     // to keep track of read bytes in the body rather than assume we need to read Content_Length bytes
     bool invalid_content_length = (int) content_length < 0;
     if (invalid_content_length) {
