@@ -196,24 +196,46 @@ template<typename... Ts> class HttpRequestSendAction : public Action<Ts...> {
     size_t content_length = container->content_length;
     size_t max_length = std::min(content_length, this->max_response_buffer_size_);
 
+    // Returned header Content_Length = -1 is no helpful so we need
+    // to keep track of read bytes in the body rather than assume we need to read Content_Length bytes
+    bool invalid_content_length = (int) content_length < 0;
+    if (invalid_content_length) {
+      max_length = this->max_response_buffer_size_;
+      //ESP_LOGD("mjf", "Invalid content length %d, buffer set to %d", content_length, max_length);
+    }
+
     std::string response_body;
     if (this->capture_response_.value(x...)) {
       ExternalRAMAllocator<uint8_t> allocator(ExternalRAMAllocator<uint8_t>::ALLOW_FAILURE);
       uint8_t *buf = allocator.allocate(max_length);
       if (buf != nullptr) {
         size_t read_index = 0;
-        while (container->get_bytes_read() < max_length) {
+        // Prevent loop getting stuck
+        // 'read' will not increment if there are no more bytes to read
+        size_t last_read_index = -1;
+        while (container->get_bytes_read() < max_length && read_index != last_read_index) {
+          last_read_index = read_index;
           int read = container->read(buf + read_index, std::min<size_t>(max_length - read_index, 512));
           App.feed_wdt();
           yield();
+          // Detect an attempt to read backwards (negative 'read')
+          if (read < 0) break;
           read_index += read;
         }
+
         response_body.reserve(read_index);
         response_body.assign((char *) buf, read_index);
         allocator.deallocate(buf, max_length);
       }
     }
-
+    // TODO: understand why response body has two leading bytes (ascii encoded length)
+    if (invalid_content_length) {
+      // strip the leading first two bytes (handle differently when above TODO is understood)
+      if (response_body.length() > 2) {
+        response_body.erase(0, 2);
+      }
+      container->content_length = response_body.length();
+    }
     if (this->response_triggers_.size() == 1) {
       // if there is only one trigger, no need to copy the response body
       this->response_triggers_[0]->process(container, response_body);
