@@ -201,7 +201,6 @@ template<typename... Ts> class HttpRequestSendAction : public Action<Ts...> {
     bool invalid_content_length = (int) content_length < 0;
     if (invalid_content_length) {
       max_length = this->max_response_buffer_size_;
-      //ESP_LOGD("mjf", "Invalid content length %d, buffer set to %d", content_length, max_length);
     }
 
     std::string response_body;
