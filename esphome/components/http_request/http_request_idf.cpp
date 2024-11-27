@@ -122,6 +122,20 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
   App.feed_wdt();
   container->status_code = esp_http_client_get_status_code(client);
   App.feed_wdt();
+  
+  // Check for a chunked response where the content length could be 0 or negative
+  // TODO: need to understand if chunked responses need multiple reads
+  if (esp_http_client_is_chunked_response(client)) {
+    int chunk_length = 0;
+    err = esp_http_client_get_chunk_length(client, &chunk_length);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Chunked response, length error: %s", esp_err_to_name(err));
+      container->content_length = -1;
+    } else {
+      container->content_length = chunk_length;
+      ESP_LOGD(TAG, "Chunked response, length %d", chunk_length);
+    }
+  }
   if (is_success(container->status_code)) {
     container->duration_ms = millis() - start;
     return container;
@@ -156,6 +170,20 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
       App.feed_wdt();
       container->status_code = esp_http_client_get_status_code(client);
       App.feed_wdt();
+
+      // Check for a chunked response where the content length could be 0 or negative
+      // TODO: need to understand if chunked responses need multiple reads
+      if (esp_http_client_is_chunked_response(client)) {
+        int chunk_length = 0;
+        err = esp_http_client_get_chunk_length(client, &chunk_length);
+        if (err != ESP_OK) {
+          ESP_LOGE(TAG, "Chunked response, length error: %s", esp_err_to_name(err));
+          container->content_length = -1;
+        } else {
+          container->content_length = chunk_length;
+          ESP_LOGD(TAG, "Chunked response, length %d", chunk_length);
+        }
+      }
       if (is_success(container->status_code)) {
         container->duration_ms = millis() - start;
         return container;
