@@ -142,7 +142,8 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
     Non-chunked data has a known length (container->content_length)
 
   For both chunked and non-chunked the data might already be in the stream or be sent in delayed packets
-  Either way stream_ptr->readBytes needs to be called with the right buffer start address and exactly the tight number of bytes to read
+  Either way stream_ptr->readBytes needs to be called with the right buffer start address and exactly the right number
+  of bytes to read
   */
   const uint32_t start = millis();
   watchdog::WatchdogManager wdm(this->parent_->get_watchdog_timeout());
@@ -158,7 +159,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
   int available_data = stream_ptr->available();
   const uint8_t cr = 0x0D;
   const uint8_t lf = 0x0A;
-  int read_len = 0; // current reading index from the start of buf when reading the stream
+  int read_len = 0; //  current reading index from the start of buf when reading the stream
   if (this->response_chunked) {
     // The data is chunked so we don't know how much to read from the stream
     // There's nothing waiting to be read in the stream so we need to wait until the server sends
@@ -185,7 +186,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
       ESP_LOGE(TAG, "Unable to find <cr> in the first 6 bytes of the chunk '%s'", (char *) buf);
       return -1;
     }
-    chunk_length = std::stoi((char*) buf, 0, 16);
+    chunk_length = std::stoi((char *) buf, 0, 16);
     if (chunk_length < 0) {
       ESP_LOGE(TAG, "Found negative chunk length");
       return -1;
@@ -213,10 +214,10 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
       stream_read_count += count;
       return 0;
     }
-    bytes_to_read = chunk_length + 2; // extra 2 bytes for cr-lf terminator
+    bytes_to_read = chunk_length + 2;  // extra 2 bytes for cr-lf terminator
 
     // bytes_to_read might be larger than the stream buffer so get the data in smaller pieces if necessary
-    int last_read_index = -1; // value of read_index after the last read
+    int last_read_index = -1;  // value of read_index after the last read
     while (read_len < bytes_to_read && read_len != last_read_index) {
       last_read_index = read_len;
       // limit this read count to the buffer size
@@ -262,8 +263,6 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
     this->bytes_read_ += read_len;
     return read_len;
   }
-
-
 }
 
 void HttpContainerArduino::end() {
