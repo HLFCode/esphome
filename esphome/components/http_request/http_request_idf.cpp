@@ -25,31 +25,31 @@ void HttpRequestIDF::dump_config() {
 #if DEBUG_IDF
 esp_err_t _http_event_handle(esp_http_client_event_t *evt) {
   switch(evt->event_id) {
-      case HTTP_EVENT_ERROR:
-          ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
-          break;
-      case HTTP_EVENT_ON_CONNECTED:
-          ESP_LOGD(TAG, "HTTP_EVENT_ON_CONNECTED");
-          break;
-      case HTTP_EVENT_HEADER_SENT:
-          ESP_LOGD(TAG, "HTTP_EVENT_HEADER_SENT");
-          break;
-      case HTTP_EVENT_ON_HEADER:
-          ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
-          break;
-      case HTTP_EVENT_ON_DATA:
-          if (esp_http_client_is_chunked_response(evt->client)) {
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, chunked, len=%d", evt->data_len);
-          } else {
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, not chunked, len=%d, '%s'", evt->data_len, (char*)evt->data);
-          }
-          break;
-      case HTTP_EVENT_ON_FINISH:
-          ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
-          break;
-      case HTTP_EVENT_DISCONNECTED:
-          ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
-          break;
+    case HTTP_EVENT_ERROR:
+      ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
+      break;
+    case HTTP_EVENT_ON_CONNECTED:
+      ESP_LOGD(TAG, "HTTP_EVENT_ON_CONNECTED");
+      break;
+    case HTTP_EVENT_HEADER_SENT:
+      ESP_LOGD(TAG, "HTTP_EVENT_HEADER_SENT");
+      break;
+    case HTTP_EVENT_ON_HEADER:
+      ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
+      break;
+    case HTTP_EVENT_ON_DATA:
+      if (esp_http_client_is_chunked_response(evt->client)) {
+        ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, chunked, len=%d", evt->data_len);
+      } else {
+        ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, not chunked, len=%d, '%s'", evt->data_len, (char*)evt->data);
+      }
+      break;
+    case HTTP_EVENT_ON_FINISH:
+      ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
+      break;
+    case HTTP_EVENT_DISCONNECTED:
+      ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
+      break;
       //case HTTP_EVENT_REDIRECT:
       //    ESP_LOGD(TAG, "HTTP_EVENT_REDIRECT");
       //    break;
