@@ -156,7 +156,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
 
   int bytes_to_read = 0;
   int chunk_length = 0;
-  int available_data = stream_ptr->available();
+  // int available_data = stream_ptr->available();
   const uint8_t cr = 0x0D;
   const uint8_t lf = 0x0A;
   int read_len = 0;  //  current reading index from the start of buf when reading the stream
@@ -164,7 +164,6 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
     // The data is chunked so we don't know how much to read from the stream
     // There's nothing waiting to be read in the stream so we need to wait until the server sends
     // at least 3 bytes to find out how long the chunk is
-    uint32_t available_start = millis();
     bool found_cr = false;
     int stream_read_count = 0;
     int count = 0;
@@ -191,7 +190,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
       ESP_LOGE(TAG, "Found negative chunk length");
       return -1;
     }
-    if (chunk_length > max_len) {
+    if (chunk_length > (int) max_len) {
       ESP_LOGE(TAG, "Buffer too small (%d bytes) for chunk of %d bytes", max_len, chunk_length);
       return -1;
     }
@@ -207,11 +206,10 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
     if (chunk_length == 0) {
       App.feed_wdt();
       count = stream_ptr->readBytes(buf, 2);
-      if (count != 2 || *buf != cr || *(buf + 1) != lf) {
+      if (count != 2 || *(buf + stream_read_count) != cr || *(buf + stream_read_count + 1) != lf) {
         ESP_LOGE(TAG, "Invalid chunk terminator");
         return -1;
       }
-      stream_read_count += count;
       return 0;
     }
     bytes_to_read = chunk_length + 2;  // extra 2 bytes for cr-lf terminator
