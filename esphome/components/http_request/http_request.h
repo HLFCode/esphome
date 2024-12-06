@@ -214,7 +214,7 @@ template<typename... Ts> class HttpRequestSendAction : public Action<Ts...> {
         size_t read_index = 0;
         // Prevent loop getting stuck
         // 'read' will not increment if there are no more bytes to read
-        size_t last_read_index = -1;
+        int last_read_index = -1;
         while (container->get_bytes_read() < max_length && read_index != last_read_index) {
           last_read_index = read_index;
           if (max_length <= read_index) {
