@@ -156,7 +156,7 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
   }
 
   App.feed_wdt();
-  // calling esp_http_client_fetch_headers can result in a 
+  // calling esp_http_client_fetch_headers can result in a
   // "HTTP_CLIENT: Body received in fetch header state, 0xXXXXXXX, nnn" message
   // nnn is the size of the body retrieved
   // Even though this client already has the response body it still
