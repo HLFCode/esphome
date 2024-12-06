@@ -205,7 +205,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
 
     if (chunk_length == 0) {
       App.feed_wdt();
-      count = stream_ptr->readBytes(buf, 2);
+      count = stream_ptr->readBytes(buf + stream_read_count, 2);
       if (count != 2 || *(buf + stream_read_count) != cr || *(buf + stream_read_count + 1) != lf) {
         ESP_LOGE(TAG, "Invalid chunk terminator");
         return -1;
