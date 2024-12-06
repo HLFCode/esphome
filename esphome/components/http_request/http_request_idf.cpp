@@ -41,7 +41,7 @@ esp_err_t _http_event_handle(esp_http_client_event_t *evt) {
       if (esp_http_client_is_chunked_response(evt->client)) {
         ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, chunked, len=%d", evt->data_len);
       } else {
-        ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, not chunked, len=%d, '%s'", evt->data_len, (char *)evt->data);
+        ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, not chunked, len=%d, '%s'", evt->data_len, (char *) evt->data);
       }
       break;
     case HTTP_EVENT_ON_FINISH:
