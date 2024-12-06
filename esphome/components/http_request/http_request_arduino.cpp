@@ -131,7 +131,7 @@ std::shared_ptr<HttpContainer> HttpRequestArduino::start(std::string url, std::s
 }
 
 int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
-  /* 
+  /*
   This is repeatedly called by 'play' until buf is full (max_len=0) or this returns 0
   Chunked data:
     max_len will be as large as possible so buf can be filled as defined by this method
@@ -140,7 +140,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
   Non-chunked data:
     max_len is always sized so that stream reads won't be larger than the server will be sending
     Non-chunked data has a known length (container->content_length)
-  
+
   For both chunked and non-chunked the data might already be in the stream or be sent in delayed packets
   Either way stream_ptr->readBytes needs to be called with the right buffer start address and exactly the tight number of bytes to read
   */
@@ -152,7 +152,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
     ESP_LOGE(TAG, "Stream pointer vanished!");
     return -1;
   }
-  
+
   int bytes_to_read = 0;
   int chunk_length = 0;
   int available_data = stream_ptr->available();
@@ -261,7 +261,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
     this->bytes_read_ += read_len;
     return read_len;
   }
-  
+
 
 }
 
