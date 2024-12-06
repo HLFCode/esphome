@@ -196,10 +196,10 @@ template<typename... Ts> class HttpRequestSendAction : public Action<Ts...> {
     }
 
     size_t max_length = this->max_response_buffer_size_;
-    // For chunked responses we don't know the size of the chunk yet so make the buffer which will hold the response body as large as possible
-    // and handle the decoding in 'read'
+    // For chunked responses we don't know the size of the chunk yet so make the buffer which will hold the response
+    // body as large as possible and handle the decoding in 'read'
     if (!container->response_chunked) {
-        max_length = std::min(container->content_length, this->max_response_buffer_size_);
+      max_length = std::min(container->content_length, this->max_response_buffer_size_);
     }
 
     std::string response_body;
