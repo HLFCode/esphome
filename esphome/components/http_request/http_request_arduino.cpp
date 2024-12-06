@@ -161,7 +161,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
   int read_len = 0; // current reading index from the start of buf when reading the stream
   if (this->response_chunked) {
     // The data is chunked so we don't know how much to read from the stream
-    // There's nothing waiting to be read in the stream so we need to wait until the server sends 
+    // There's nothing waiting to be read in the stream so we need to wait until the server sends
     // at least 3 bytes to find out how long the chunk is
     uint32_t available_start = millis();
     bool found_cr = false;
