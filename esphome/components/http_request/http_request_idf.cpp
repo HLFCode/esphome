@@ -164,7 +164,7 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
   App.feed_wdt();
   container->status_code = esp_http_client_get_status_code(client);
   App.feed_wdt();
-  
+
   // Check for a chunked response where the content length could be 0 or negative
   if (esp_http_client_is_chunked_response(client)) {
     container->response_chunked = true;
