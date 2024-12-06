@@ -218,14 +218,14 @@ template<typename... Ts> class HttpRequestSendAction : public Action<Ts...> {
         while (container->get_bytes_read() < max_length && read_index != last_read_index) {
           last_read_index = read_index;
           if (max_length <= read_index) {
-            //ESP_LOGE("http_request.h", "Read buffer too small");
+            // Read buffer too small
             break;
           }
           int read = container->read(buf + read_index, max_length - read_index);
           App.feed_wdt();
           yield();
           if (read < 0) {
-            //ESP_LOGE("http_request.h", "Read error from http client");
+            // Read error from http client
             break;
           }
           read_index += read;
