@@ -221,7 +221,7 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
       // limit this read count to the buffer size
       // TODO: replace 512 with the h/w buffer size (whatever that is)
       int read_count = std::min(bytes_to_read - read_len, 512);
-      if (read_count + read_len > max_len) {
+      if (read_count + read_len > (int) max_len) {
         ESP_LOGE(TAG, "Response buffer too small");
         return -1;
       }
