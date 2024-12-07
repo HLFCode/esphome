@@ -219,8 +219,12 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
     while (read_len < bytes_to_read && read_len != last_read_index) {
       last_read_index = read_len;
       // limit this read count to the buffer size
-      // TODO replace 512 with max_response_buffer_size_ somehow
+      // TODO: replace 512 with the h/w buffer size (whatever that is)
       int read_count = std::min(bytes_to_read - read_len, 512);
+      if (read_count + read_len > max_len) {
+        ESP_LOGE(TAG, "Response buffer too small");
+        return -1;
+      }
       App.feed_wdt();
       // note we are reading from the start of the original pointer buf thus overwriting the previously
       // collected chunk length header
