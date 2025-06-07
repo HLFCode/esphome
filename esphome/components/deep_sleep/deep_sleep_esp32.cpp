@@ -31,7 +31,10 @@ void DeepSleepComponent::set_wakeup_pin_mode(WakeupPinMode wakeup_pin_mode) {
 #if !defined(USE_ESP32_VARIANT_ESP32C3) && !defined(USE_ESP32_VARIANT_ESP32C6)
 void DeepSleepComponent::set_ext1_wakeup(Ext1Wakeup ext1_wakeup) { this->ext1_wakeup_ = ext1_wakeup; }
 
+#if !defined(USE_ESP32_VARIANT_ESP32H2)
 void DeepSleepComponent::set_touch_wakeup(bool touch_wakeup) { this->touch_wakeup_ = touch_wakeup; }
+#endif
+
 #endif
 
 void DeepSleepComponent::set_run_duration(WakeupCauseToRunDuration wakeup_cause_to_run_duration) {
@@ -52,11 +55,11 @@ void DeepSleepComponent::dump_config_platform_() {
 
 bool DeepSleepComponent::prepare_to_sleep_() {
   if (this->wakeup_pin_mode_ == WAKEUP_PIN_MODE_KEEP_AWAKE && this->wakeup_pin_ != nullptr &&
-      !this->sleep_duration_.has_value() && this->wakeup_pin_->digital_read()) {
+      this->wakeup_pin_->digital_read()) {
     // Defer deep sleep until inactive
     if (!this->next_enter_deep_sleep_) {
       this->status_set_warning();
-      ESP_LOGW(TAG, "Waiting for pin_ to switch state to enter deep sleep...");
+      ESP_LOGW(TAG, "Waiting for wakeup pin state change");
     }
     this->next_enter_deep_sleep_ = true;
     return false;
@@ -65,7 +68,7 @@ bool DeepSleepComponent::prepare_to_sleep_() {
 }
 
 void DeepSleepComponent::deep_sleep_() {
-#if !defined(USE_ESP32_VARIANT_ESP32C3) && !defined(USE_ESP32_VARIANT_ESP32C6)
+#if !defined(USE_ESP32_VARIANT_ESP32C3) && !defined(USE_ESP32_VARIANT_ESP32C6) && !defined(USE_ESP32_VARIANT_ESP32H2)
   if (this->sleep_duration_.has_value())
     esp_sleep_enable_timer_wakeup(*this->sleep_duration_);
   if (this->wakeup_pin_ != nullptr) {
@@ -84,6 +87,15 @@ void DeepSleepComponent::deep_sleep_() {
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
   }
 #endif
+
+#if defined(USE_ESP32_VARIANT_ESP32H2)
+  if (this->sleep_duration_.has_value())
+    esp_sleep_enable_timer_wakeup(*this->sleep_duration_);
+  if (this->ext1_wakeup_.has_value()) {
+    esp_sleep_enable_ext1_wakeup(this->ext1_wakeup_->mask, this->ext1_wakeup_->wakeup_mode);
+  }
+#endif
+
 #if defined(USE_ESP32_VARIANT_ESP32C3) || defined(USE_ESP32_VARIANT_ESP32C6)
   if (this->sleep_duration_.has_value())
     esp_sleep_enable_timer_wakeup(*this->sleep_duration_);

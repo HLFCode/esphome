@@ -3,7 +3,6 @@ import logging
 import os
 from pathlib import Path
 import re
-from typing import Union
 
 from esphome import loader
 from esphome.config import iter_component_configs, iter_components
@@ -132,7 +131,7 @@ def update_storage_json():
     new.save(path)
 
 
-def format_ini(data: dict[str, Union[str, list[str]]]) -> str:
+def format_ini(data: dict[str, str | list[str]]) -> str:
     content = ""
     for key, value in sorted(data.items()):
         if isinstance(value, list):
@@ -212,9 +211,7 @@ def write_platformio_project():
     write_platformio_ini(content)
 
 
-DEFINES_H_FORMAT = (
-    ESPHOME_H_FORMAT
-) = """\
+DEFINES_H_FORMAT = ESPHOME_H_FORMAT = """\
 #pragma once
 #include "esphome/core/macros.h"
 {}

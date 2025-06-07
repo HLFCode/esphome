@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 import importlib
@@ -8,7 +9,7 @@ import logging
 from pathlib import Path
 import sys
 from types import ModuleType
-from typing import Any, Callable, Optional
+from typing import Any
 
 from esphome.const import SOURCE_FILE_EXTENSIONS
 from esphome.core import CORE
@@ -53,7 +54,11 @@ class ComponentManifest:
         return getattr(self.module, "IS_PLATFORM_COMPONENT", False)
 
     @property
-    def config_schema(self) -> Optional[Any]:
+    def is_target_platform(self) -> bool:
+        return getattr(self.module, "IS_TARGET_PLATFORM", False)
+
+    @property
+    def config_schema(self) -> Any | None:
         return getattr(self.module, "CONFIG_SCHEMA", None)
 
     @property
@@ -65,7 +70,7 @@ class ComponentManifest:
         return getattr(self.module, "MULTI_CONF_NO_DEFAULT", False)
 
     @property
-    def to_code(self) -> Optional[Callable[[Any], None]]:
+    def to_code(self) -> Callable[[Any], None] | None:
         return getattr(self.module, "to_code", None)
 
     @property
@@ -88,7 +93,11 @@ class ComponentManifest:
         return getattr(self.module, "CODEOWNERS", [])
 
     @property
-    def final_validate_schema(self) -> Optional[Callable[[ConfigType], None]]:
+    def instance_type(self) -> list[str]:
+        return getattr(self.module, "INSTANCE_TYPE", None)
+
+    @property
+    def final_validate_schema(self) -> Callable[[ConfigType], None] | None:
         """Components can declare a `FINAL_VALIDATE_SCHEMA` cv.Schema that gets called
         after the main validation. In that function checks across components can be made.
 
@@ -121,7 +130,7 @@ class ComponentManifest:
 
 class ComponentMetaFinder(importlib.abc.MetaPathFinder):
     def __init__(
-        self, components_path: Path, allowed_components: Optional[list[str]] = None
+        self, components_path: Path, allowed_components: list[str] | None = None
     ) -> None:
         self._allowed_components = allowed_components
         self._finders = []
@@ -132,7 +141,7 @@ class ComponentMetaFinder(importlib.abc.MetaPathFinder):
                 continue
             self._finders.append(finder)
 
-    def find_spec(self, fullname: str, path: Optional[list[str]], target=None):
+    def find_spec(self, fullname: str, path: list[str] | None, target=None):
         if not fullname.startswith("esphome.components."):
             return None
         parts = fullname.split(".")
@@ -159,7 +168,7 @@ def clear_component_meta_finders():
 
 
 def install_meta_finder(
-    components_path: Path, allowed_components: Optional[list[str]] = None
+    components_path: Path, allowed_components: list[str] | None = None
 ):
     sys.meta_path.insert(0, ComponentMetaFinder(components_path, allowed_components))
 
@@ -169,13 +178,15 @@ def install_custom_components_meta_finder():
     install_meta_finder(custom_components_dir)
 
 
-def _lookup_module(domain):
+def _lookup_module(domain, exception):
     if domain in _COMPONENT_CACHE:
         return _COMPONENT_CACHE[domain]
 
     try:
         module = importlib.import_module(f"esphome.components.{domain}")
     except ImportError as e:
+        if exception:
+            raise
         if "No module named" in str(e):
             _LOGGER.info(
                 "Unable to import component %s: %s", domain, str(e), exc_info=False
@@ -184,6 +195,8 @@ def _lookup_module(domain):
             _LOGGER.error("Unable to import component %s:", domain, exc_info=True)
         return None
     except Exception:  # pylint: disable=broad-except
+        if exception:
+            raise
         _LOGGER.error("Unable to load component %s:", domain, exc_info=True)
         return None
 
@@ -192,14 +205,14 @@ def _lookup_module(domain):
     return manif
 
 
-def get_component(domain):
+def get_component(domain, exception=False):
     assert "." not in domain
-    return _lookup_module(domain)
+    return _lookup_module(domain, exception)
 
 
 def get_platform(domain, platform):
     full = f"{platform}.{domain}"
-    return _lookup_module(full)
+    return _lookup_module(full, False)
 
 
 _COMPONENT_CACHE = {}

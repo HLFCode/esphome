@@ -54,7 +54,7 @@ enum {  // APDS9306 registers
   }
 
 void APDS9306::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up APDS9306...");
+  ESP_LOGCONFIG(TAG, "Running setup");
 
   uint8_t id;
   if (!this->read_byte(APDS9306_PART_ID, &id)) {  // Part ID register
@@ -97,7 +97,7 @@ void APDS9306::dump_config() {
   if (this->is_failed()) {
     switch (this->error_code_) {
       case COMMUNICATION_FAILED:
-        ESP_LOGE(TAG, "Communication with APDS9306 failed!");
+        ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
         break;
       case WRONG_ID:
         ESP_LOGE(TAG, "APDS9306 has invalid id!");
@@ -122,7 +122,8 @@ void APDS9306::update() {
 
   this->status_clear_warning();
 
-  if (!(status &= 0b00001000)) {  // No new data
+  status &= 0b00001000;
+  if (!status) {  // No new data
     return;
   }
 

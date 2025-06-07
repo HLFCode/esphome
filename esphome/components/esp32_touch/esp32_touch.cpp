@@ -13,7 +13,7 @@ namespace esp32_touch {
 static const char *const TAG = "esp32_touch";
 
 void ESP32TouchComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up ESP32 Touch Hub...");
+  ESP_LOGCONFIG(TAG, "Running setup");
   touch_pad_init();
 // set up and enable/start filtering based on ESP32 variant
 #if defined(USE_ESP32_VARIANT_ESP32S2) || defined(USE_ESP32_VARIANT_ESP32S3)
@@ -52,7 +52,12 @@ void ESP32TouchComponent::setup() {
   }
 #endif
 
+#if ESP_IDF_VERSION_MAJOR >= 5 && defined(USE_ESP32_VARIANT_ESP32)
+  touch_pad_set_measurement_clock_cycles(this->meas_cycle_);
+  touch_pad_set_measurement_interval(this->sleep_cycle_);
+#else
   touch_pad_set_meas_time(this->sleep_cycle_, this->meas_cycle_);
+#endif
   touch_pad_set_voltage(this->high_voltage_reference_, this->low_voltage_reference_, this->voltage_attenuation_);
 
   for (auto *child : this->children_) {
@@ -283,7 +288,7 @@ uint32_t ESP32TouchComponent::component_touch_pad_read(touch_pad_t tp) {
 }
 
 void ESP32TouchComponent::loop() {
-  const uint32_t now = millis();
+  const uint32_t now = App.get_loop_component_start_time();
   bool should_print = this->setup_mode_ && now - this->setup_mode_last_log_print_ > 250;
   for (auto *child : this->children_) {
     child->value_ = this->component_touch_pad_read(child->get_touch_pad());

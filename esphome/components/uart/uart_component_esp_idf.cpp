@@ -1,11 +1,11 @@
 #ifdef USE_ESP_IDF
 
 #include "uart_component_esp_idf.h"
+#include <cinttypes>
 #include "esphome/core/application.h"
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
-#include <cinttypes>
 
 #ifdef USE_LOGGER
 #include "esphome/components/logger/logger.h"
@@ -84,13 +84,13 @@ void IDFUARTComponent::setup() {
   }
 #endif  // USE_LOGGER
 
-  if (next_uart_num >= UART_NUM_MAX) {
-    ESP_LOGW(TAG, "Maximum number of UART components created already.");
+  if (next_uart_num >= SOC_UART_NUM) {
+    ESP_LOGW(TAG, "Maximum number of UART components created already");
     this->mark_failed();
     return;
   }
   this->uart_num_ = static_cast<uart_port_t>(next_uart_num++);
-  ESP_LOGCONFIG(TAG, "Setting up UART %u...", this->uart_num_);
+  ESP_LOGCONFIG(TAG, "Running setup for UART %u", this->uart_num_);
 
   this->lock_ = xSemaphoreCreateMutex();
 
@@ -234,7 +234,7 @@ int IDFUARTComponent::available() {
 }
 
 void IDFUARTComponent::flush() {
-  ESP_LOGVV(TAG, "    Flushing...");
+  ESP_LOGVV(TAG, "    Flushing");
   xSemaphoreTake(this->lock_, portMAX_DELAY);
   uart_wait_tx_done(this->uart_num_, portMAX_DELAY);
   xSemaphoreGive(this->lock_);

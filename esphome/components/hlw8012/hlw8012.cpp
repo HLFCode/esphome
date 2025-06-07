@@ -11,7 +11,7 @@ static const uint32_t HLW8012_CLOCK_FREQUENCY = 3579000;
 
 void HLW8012Component::setup() {
   float reference_voltage = 0;
-  ESP_LOGCONFIG(TAG, "Setting up HLW8012...");
+  ESP_LOGCONFIG(TAG, "Running setup");
   this->sel_pin_->setup();
   this->sel_pin_->digital_write(this->current_mode_);
   this->cf_store_.pulse_counter_setup(this->cf_pin_);
@@ -69,7 +69,7 @@ void HLW8012Component::update() {
 
   float power = cf_hz * this->power_multiplier_;
 
-  if (this->change_mode_at_ != 0) {
+  if (this->change_mode_at_ != 0 || this->change_mode_every_ == 0) {
     // Only read cf1 after one cycle. Apparently it's quite unstable after being changed.
     if (this->current_mode_) {
       float current = cf1_hz * this->current_multiplier_;

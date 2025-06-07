@@ -2,7 +2,7 @@ import logging
 import math
 import os
 import re
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 
 from esphome.const import (
     CONF_COMMENT,
@@ -52,16 +52,6 @@ class HexInt(int):
         if 0 <= value <= 255:
             return f"{sign}0x{value:02X}"
         return f"{sign}0x{value:X}"
-
-
-class IPAddress:
-    def __init__(self, *args):
-        if len(args) != 4:
-            raise ValueError("IPAddress must consist of 4 items")
-        self.args = args
-
-    def __str__(self):
-        return ".".join(str(x) for x in self.args)
 
 
 class MACAddress:
@@ -336,7 +326,7 @@ class ID:
         else:
             self.is_manual = is_manual
         self.is_declaration = is_declaration
-        self.type: Optional[MockObjClass] = type
+        self.type: MockObjClass | None = type
 
     def resolve(self, registered_ids):
         from esphome.config_validation import RESERVED_IDS
@@ -485,22 +475,21 @@ class EsphomeCore:
         self.dashboard = False
         # True if command is run from vscode api
         self.vscode = False
-        self.ace = False
         # The name of the node
-        self.name: Optional[str] = None
+        self.name: str | None = None
         # The friendly name of the node
-        self.friendly_name: Optional[str] = None
+        self.friendly_name: str | None = None
         # The area / zone of the node
-        self.area: Optional[str] = None
+        self.area: str | None = None
         # Additional data components can store temporary data in
         # The first key to this dict should always be the integration name
         self.data = {}
         # The relative path to the configuration YAML
-        self.config_path: Optional[str] = None
+        self.config_path: str | None = None
         # The relative path to where all build files are stored
-        self.build_path: Optional[str] = None
+        self.build_path: str | None = None
         # The validated configuration, this is None until the config has been validated
-        self.config: Optional[ConfigType] = None
+        self.config: ConfigType | None = None
         # The pending tasks in the task queue (mostly for C++ generation)
         # This is a priority queue (with heapq)
         # Each item is a tuple of form: (-priority, unique number, task)
@@ -520,7 +509,7 @@ class EsphomeCore:
         # A set of defines to set for the compile process in esphome/core/defines.h
         self.defines: set[Define] = set()
         # A map of all platformio options to apply
-        self.platformio_options: dict[str, Union[str, list[str]]] = {}
+        self.platformio_options: dict[str, str | list[str]] = {}
         # A set of strings of names of loaded integrations, used to find namespace ID conflicts
         self.loaded_integrations = set()
         # A set of component IDs to track what Component subclasses are declared
@@ -529,6 +518,8 @@ class EsphomeCore:
         self.verbose = False
         # Whether ESPHome was started in quiet mode
         self.quiet = False
+        # A list of all known ID classes
+        self.id_classes = {}
 
     def reset(self):
         from esphome.pins import PIN_SCHEMA_REGISTRY
@@ -555,7 +546,7 @@ class EsphomeCore:
         PIN_SCHEMA_REGISTRY.reset()
 
     @property
-    def address(self) -> Optional[str]:
+    def address(self) -> str | None:
         if self.config is None:
             raise ValueError("Config has not been loaded yet")
 
@@ -568,7 +559,7 @@ class EsphomeCore:
         return None
 
     @property
-    def web_port(self) -> Optional[int]:
+    def web_port(self) -> int | None:
         if self.config is None:
             raise ValueError("Config has not been loaded yet")
 
@@ -581,7 +572,7 @@ class EsphomeCore:
         return None
 
     @property
-    def comment(self) -> Optional[str]:
+    def comment(self) -> str | None:
         if self.config is None:
             raise ValueError("Config has not been loaded yet")
 
@@ -592,7 +583,7 @@ class EsphomeCore:
 
     @property
     def config_dir(self):
-        return os.path.dirname(self.config_path)
+        return os.path.abspath(os.path.dirname(self.config_path))
 
     @property
     def data_dir(self):
@@ -699,7 +690,7 @@ class EsphomeCore:
         _LOGGER.debug("Adding: %s", expression)
         return expression
 
-    def add_global(self, expression):
+    def add_global(self, expression, prepend=False):
         from esphome.cpp_generator import Expression, Statement, statement
 
         if isinstance(expression, Expression):
@@ -708,7 +699,10 @@ class EsphomeCore:
             raise ValueError(
                 f"Add '{expression}' must be expression or statement, not {type(expression)}"
             )
-        self.global_statements.append(expression)
+        if prepend:
+            self.global_statements.insert(0, expression)
+        else:
+            self.global_statements.append(expression)
         _LOGGER.debug("Adding global: %s", expression)
         return expression
 
@@ -779,7 +773,7 @@ class EsphomeCore:
         _LOGGER.debug("Adding define: %s", define)
         return define
 
-    def add_platformio_option(self, key: str, value: Union[str, list[str]]) -> None:
+    def add_platformio_option(self, key: str, value: str | list[str]) -> None:
         new_val = value
         old_val = self.platformio_options.get(key)
         if isinstance(old_val, list):

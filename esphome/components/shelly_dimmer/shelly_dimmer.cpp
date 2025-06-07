@@ -101,7 +101,7 @@ void ShellyDimmer::setup() {
   this->pin_nrst_->setup();
   this->pin_boot0_->setup();
 
-  ESP_LOGI(TAG, "Initializing Shelly Dimmer...");
+  ESP_LOGI(TAG, "Initializing");
 
   this->handle_firmware();
 
@@ -466,7 +466,7 @@ bool ShellyDimmer::handle_frame_() {
     }
     case SHELLY_DIMMER_PROTO_CMD_SWITCH:
     case SHELLY_DIMMER_PROTO_CMD_SETTINGS: {
-      return !(payload_len < 1 || payload[0] != 0x01);
+      return payload_len >= 1 && payload[0] == 0x01;
     }
     default: {
       return false;

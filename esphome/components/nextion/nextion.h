@@ -35,8 +35,68 @@ using nextion_writer_t = std::function<void(Nextion &)>;
 
 static const std::string COMMAND_DELIMITER{static_cast<char>(255), static_cast<char>(255), static_cast<char>(255)};
 
+#ifdef USE_NEXTION_COMMAND_SPACING
+class NextionCommandPacer {
+ public:
+  /**
+   * @brief Creates command pacer with initial spacing
+   * @param initial_spacing Initial time between commands in milliseconds
+   */
+  explicit NextionCommandPacer(uint8_t initial_spacing = 0) : spacing_ms_(initial_spacing) {}
+
+  /**
+   * @brief Set the minimum time between commands
+   * @param spacing_ms Spacing in milliseconds
+   */
+  void set_spacing(uint8_t spacing_ms) { spacing_ms_ = spacing_ms; }
+
+  /**
+   * @brief Get current command spacing
+   * @return Current spacing in milliseconds
+   */
+  uint8_t get_spacing() const { return spacing_ms_; }
+
+  /**
+   * @brief Check if enough time has passed to send next command
+   * @return true if enough time has passed since last command
+   */
+  bool can_send() const { return (millis() - last_command_time_) >= spacing_ms_; }
+
+  /**
+   * @brief Mark a command as sent, updating the timing
+   */
+  void mark_sent() { last_command_time_ = millis(); }
+
+ private:
+  uint8_t spacing_ms_;
+  uint32_t last_command_time_{0};
+};
+#endif  // USE_NEXTION_COMMAND_SPACING
+
 class Nextion : public NextionBase, public PollingComponent, public uart::UARTDevice {
  public:
+#ifdef USE_NEXTION_MAX_QUEUE_SIZE
+  /**
+   * @brief Set the maximum allowed queue size
+   * @param size Max number of entries allowed in nextion_queue_
+   */
+  inline void set_max_queue_size(size_t size) { this->max_queue_size_ = size; }
+
+  /**
+   * @brief Get the maximum allowed queue size
+   * @return Current limit (0 = unlimited)
+   */
+  inline size_t get_max_queue_size() const { return this->max_queue_size_; }
+#endif  // USE_NEXTION_MAX_QUEUE_SIZE
+
+#ifdef USE_NEXTION_COMMAND_SPACING
+  /**
+   * @brief Set the command spacing for the display
+   * @param spacing_ms Time in milliseconds between commands
+   */
+  void set_command_spacing(uint32_t spacing_ms) { this->command_pacer_.set_spacing(spacing_ms); }
+#endif  // USE_NEXTION_COMMAND_SPACING
+
   /**
    * Set the text of a component to a static string.
    * @param component The component name.
@@ -857,76 +917,6 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
   void set_backlight_brightness(float brightness);
 
   /**
-   * Set the touch sleep timeout of the display.
-   * @param timeout Timeout in seconds.
-   *
-   * Example:
-   * ```cpp
-   * it.set_touch_sleep_timeout(30);
-   * ```
-   *
-   * After 30 seconds the display will go to sleep. Note: the display will only wakeup by a restart or by setting up
-   * `thup`.
-   */
-  void set_touch_sleep_timeout(uint16_t timeout);
-
-  /**
-   * Sets which page Nextion loads when exiting sleep mode. Note this can be set even when Nextion is in sleep mode.
-   * @param page_id The page id, from 0 to the lage page in Nextion. Set 255 (not set to any existing page) to
-   * wakes up to current page.
-   *
-   * Example:
-   * ```cpp
-   * it.set_wake_up_page(2);
-   * ```
-   *
-   * The display will wake up to page 2.
-   */
-  void set_wake_up_page(uint8_t page_id = 255);
-
-  /**
-   * Sets which page Nextion loads when connecting to ESPHome.
-   * @param page_id The page id, from 0 to the lage page in Nextion. Set 255 (not set to any existing page) to
-   * wakes up to current page.
-   *
-   * Example:
-   * ```cpp
-   * it.set_start_up_page(2);
-   * ```
-   *
-   * The display will go to page 2 when it establishes a connection to ESPHome.
-   */
-  void set_start_up_page(uint8_t page_id = 255);
-
-  /**
-   * Sets if Nextion should auto-wake from sleep when touch press occurs.
-   * @param auto_wake True or false. When auto_wake is true and Nextion is in sleep mode,
-   * the first touch will only trigger the auto wake mode and not trigger a Touch Event.
-   *
-   * Example:
-   * ```cpp
-   * it.set_auto_wake_on_touch(true);
-   * ```
-   *
-   * The display will wake up by touch.
-   */
-  void set_auto_wake_on_touch(bool auto_wake);
-
-  /**
-   * Sets if Nextion should exit the active reparse mode before the "connect" command is sent
-   * @param exit_reparse True or false. When exit_reparse is true, the exit reparse command
-   * will be sent before requesting the connection from Nextion.
-   *
-   * Example:
-   * ```cpp
-   * it.set_exit_reparse_on_start(true);
-   * ```
-   *
-   * The display will be requested to leave active reparse mode before setup.
-   */
-  void set_exit_reparse_on_start(bool exit_reparse);
-
-  /**
    * Sets whether the Nextion display should skip the connection handshake process.
    * @param skip_handshake True or false. When skip_connection_handshake is true,
    * the connection will be established without performing the handshake.
@@ -1172,15 +1162,75 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
 
   void update_components_by_prefix(const std::string &prefix);
 
-  void set_touch_sleep_timeout_internal(uint32_t touch_sleep_timeout) {
-    this->touch_sleep_timeout_ = touch_sleep_timeout;
-  }
-  void set_wake_up_page_internal(uint8_t wake_up_page) { this->wake_up_page_ = wake_up_page; }
-  void set_start_up_page_internal(uint8_t start_up_page) { this->start_up_page_ = start_up_page; }
-  void set_auto_wake_on_touch_internal(bool auto_wake_on_touch) { this->auto_wake_on_touch_ = auto_wake_on_touch; }
-  void set_exit_reparse_on_start_internal(bool exit_reparse_on_start) {
-    this->exit_reparse_on_start_ = exit_reparse_on_start;
-  }
+  /**
+   * Set the touch sleep timeout of the display.
+   * @param timeout Timeout in seconds.
+   *
+   * Example:
+   * ```cpp
+   * it.set_touch_sleep_timeout(30);
+   * ```
+   *
+   * After 30 seconds the display will go to sleep. Note: the display will only wakeup by a restart or by setting up
+   * `thup`.
+   */
+  void set_touch_sleep_timeout(uint32_t touch_sleep_timeout);
+
+  /**
+   * Sets which page Nextion loads when exiting sleep mode. Note this can be set even when Nextion is in sleep mode.
+   * @param wake_up_page The page id, from 0 to the lage page in Nextion. Set 255 (not set to any existing page) to
+   * wakes up to current page.
+   *
+   * Example:
+   * ```cpp
+   * it.set_wake_up_page(2);
+   * ```
+   *
+   * The display will wake up to page 2.
+   */
+  void set_wake_up_page(uint8_t wake_up_page = 255);
+
+  /**
+   * Sets which page Nextion loads when connecting to ESPHome.
+   * @param start_up_page The page id, from 0 to the lage page in Nextion. Set 255 (not set to any existing page) to
+   * wakes up to current page.
+   *
+   * Example:
+   * ```cpp
+   * it.set_start_up_page(2);
+   * ```
+   *
+   * The display will go to page 2 when it establishes a connection to ESPHome.
+   */
+  void set_start_up_page(uint8_t start_up_page = 255) { this->start_up_page_ = start_up_page; }
+
+  /**
+   * Sets if Nextion should auto-wake from sleep when touch press occurs.
+   * @param auto_wake_on_touch True or false. When auto_wake is true and Nextion is in sleep mode,
+   * the first touch will only trigger the auto wake mode and not trigger a Touch Event.
+   *
+   * Example:
+   * ```cpp
+   * it.set_auto_wake_on_touch(true);
+   * ```
+   *
+   * The display will wake up by touch.
+   */
+  void set_auto_wake_on_touch(bool auto_wake_on_touch);
+
+  /**
+   * Sets if Nextion should exit the active reparse mode before the "connect" command is sent
+   * @param exit_reparse_on_start True or false. When exit_reparse_on_start is true, the exit reparse command
+   * will be sent before requesting the connection from Nextion.
+   *
+   * Example:
+   * ```cpp
+   * it.set_exit_reparse_on_start(true);
+   * ```
+   *
+   * The display will be requested to leave active reparse mode before setup.
+   */
+  void set_exit_reparse_on_start(bool exit_reparse_on_start) { this->exit_reparse_on_start_ = exit_reparse_on_start; }
 
   /**
    * @brief Retrieves the number of commands pending in the Nextion command queue.
@@ -1217,7 +1267,32 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
    */
   bool is_updating() override;
 
+  /**
+   * @brief Check if the Nextion display is successfully connected.
+   *
+   * This method returns whether a successful connection has been established with
+   * the Nextion display. A connection is considered established when:
+   *
+   * - The initial handshake with the display is completed successfully, or
+   * - The handshake is skipped via skip_connection_handshake_ flag
+   *
+   * The connection status is particularly useful when:
+   * - Troubleshooting communication issues
+   * - Ensuring the display is ready before sending commands
+   * - Implementing connection-dependent behaviors
+   *
+   * @return true if the Nextion display is connected and ready to receive commands
+   * @return false if the display is not yet connected or connection was lost
+   */
+  bool is_connected() { return this->is_connected_; }
+
  protected:
+#ifdef USE_NEXTION_MAX_QUEUE_SIZE
+  size_t max_queue_size_{0};
+#endif  // USE_NEXTION_MAX_QUEUE_SIZE
+#ifdef USE_NEXTION_COMMAND_SPACING
+  NextionCommandPacer command_pacer_{0};
+#endif  // USE_NEXTION_COMMAND_SPACING
   std::deque<NextionQueue *> nextion_queue_;
   std::deque<NextionQueue *> waveform_queue_;
   uint16_t recv_ret_string_(std::string &response, uint32_t timeout, bool recv_flag);
@@ -1315,8 +1390,6 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
 
 #endif  // USE_NEXTION_TFT_UPLOAD
 
-  bool get_is_connected_() { return this->is_connected_; }
-
   bool check_connect_();
 
   std::vector<NextionComponentBase *> touch_;
@@ -1332,7 +1405,7 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
   CallbackManager<void()> buffer_overflow_callback_{};
 
   optional<nextion_writer_t> writer_;
-  float brightness_{1.0};
+  optional<float> brightness_;
 
   std::string device_model_;
   std::string firmware_version_;
@@ -1353,5 +1426,6 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
   uint32_t started_ms_ = 0;
   bool sent_setup_commands_ = false;
 };
+
 }  // namespace nextion
 }  // namespace esphome

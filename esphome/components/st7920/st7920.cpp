@@ -1,7 +1,7 @@
 #include "st7920.h"
-#include "esphome/core/log.h"
-#include "esphome/core/application.h"
 #include "esphome/components/display/display_buffer.h"
+#include "esphome/core/application.h"
+#include "esphome/core/log.h"
 
 namespace esphome {
 namespace st7920 {
@@ -32,7 +32,7 @@ static const uint8_t LCD_LINE2 = 0x88;
 static const uint8_t LCD_LINE3 = 0x98;
 
 void ST7920::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up ST7920...");
+  ESP_LOGCONFIG(TAG, "Running setup");
   this->dump_config();
   this->spi_setup();
   this->init_internal_(this->get_buffer_length_());
@@ -118,7 +118,6 @@ size_t ST7920::get_buffer_length_() {
 
 void HOT ST7920::draw_absolute_pixel_internal(int x, int y, Color color) {
   if (x >= this->get_width_internal() || x < 0 || y >= this->get_height_internal() || y < 0) {
-    ESP_LOGW(TAG, "Position out of area: %dx%d", x, y);
     return;
   }
   int width = this->get_width_internal() / 8u;
@@ -130,7 +129,7 @@ void HOT ST7920::draw_absolute_pixel_internal(int x, int y, Color color) {
 }
 
 void ST7920::display_init_() {
-  ESP_LOGD(TAG, "Initializing display...");
+  ESP_LOGD(TAG, "Initializing display");
   this->command_(LCD_BASIC);      // 8bit mode
   this->command_(LCD_BASIC);      // 8bit mode
   this->command_(LCD_CLS);        // clear screen

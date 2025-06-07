@@ -233,7 +233,7 @@ ST7735::ST7735(ST7735Model model, int width, int height, int colstart, int rowst
       height_(height) {}
 
 void ST7735::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up ST7735...");
+  ESP_LOGCONFIG(TAG, "Running setup");
   this->spi_setup();
 
   this->dc_pin_->setup();  // OUTPUT
@@ -483,7 +483,7 @@ void ST7735::spi_master_write_color_(uint16_t color, uint16_t size) {
   }
 
   this->dc_pin_->digital_write(true);
-  return write_array(byte, size * 2);
+  write_array(byte, size * 2);
 }
 
 }  // namespace st7735

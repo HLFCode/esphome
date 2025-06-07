@@ -11,10 +11,17 @@
 #include "esp_crt_bundle.h"
 #endif
 
+#include "esp_task_wdt.h"
+
 namespace esphome {
 namespace http_request {
 
 static const char *const TAG = "http_request.idf";
+
+struct UserData {
+  const std::set<std::string> &collect_headers;
+  std::map<std::string, std::list<std::string>> response_headers;
+};
 
 void HttpRequestIDF::dump_config() {
   HttpRequestComponent::dump_config();
@@ -58,8 +65,30 @@ esp_err_t _http_event_handle(esp_http_client_event_t *evt) {
 }
 #endif
 
-std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::string method, std::string body,
-                                                     std::list<Header> headers) {
+esp_err_t HttpRequestIDF::http_event_handler(esp_http_client_event_t *evt) {
+  UserData *user_data = (UserData *) evt->user_data;
+
+  switch (evt->event_id) {
+    case HTTP_EVENT_ON_HEADER: {
+      const std::string header_name = str_lower_case(evt->header_key);
+      if (user_data->collect_headers.count(header_name)) {
+        const std::string header_value = evt->header_value;
+        ESP_LOGD(TAG, "Received response header, name: %s, value: %s", header_name.c_str(), header_value.c_str());
+        user_data->response_headers[header_name].push_back(header_value);
+        break;
+      }
+      break;
+    }
+    default: {
+      break;
+    }
+  }
+  return ESP_OK;
+}
+
+std::shared_ptr<HttpContainer> HttpRequestIDF::perform(std::string url, std::string method, std::string body,
+                                                       std::list<Header> request_headers,
+                                                       std::set<std::string> collect_headers) {
   if (!network::is_connected()) {
     this->status_momentary_error("failed", 1000);
     ESP_LOGE(TAG, "HTTP Request failed; Not connected to network");
@@ -112,6 +141,10 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
   const uint32_t start = millis();
   watchdog::WatchdogManager wdm(this->get_watchdog_timeout());
 
+  config.event_handler = http_event_handler;
+  auto user_data = UserData{collect_headers, {}};
+  config.user_data = static_cast<void *>(&user_data);
+
   esp_http_client_handle_t client = esp_http_client_init(&config);
 
   std::shared_ptr<HttpContainerIDF> container = std::make_shared<HttpContainerIDF>(client);
@@ -119,8 +152,8 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
 
   container->set_secure(secure);
 
-  for (const auto &header : headers) {
-    esp_http_client_set_header(client, header.name, header.value);
+  for (const auto &header : request_headers) {
+    esp_http_client_set_header(client, header.name.c_str(), header.value.c_str());
   }
 
   const int body_len = body.length();
@@ -156,6 +189,7 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
   }
 
   container->feed_wdt();
+
   // calling esp_http_client_fetch_headers can result in a
   // "HTTP_CLIENT: Body received in fetch header state, 0xXXXXXXX, nnn" message
   // nnn is the size of the body retrieved
@@ -171,6 +205,7 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
     container->response_chunked = true;
   }
 
+  container->set_response_headers(user_data.response_headers);
   if (is_success(container->status_code)) {
     container->duration_ms = millis() - start;
     return container;
@@ -248,6 +283,7 @@ int HttpContainerIDF::read(uint8_t *buf, size_t max_len) {
 
   this->feed_wdt();
   int read_len = esp_http_client_read(this->client_, (char *) buf, max_chars_to_read);
+  this->feed_wdt();
   this->bytes_read_ += read_len;
 
   this->duration_ms += (millis() - start);
@@ -260,6 +296,13 @@ void HttpContainerIDF::end() {
 
   esp_http_client_close(this->client_);
   esp_http_client_cleanup(this->client_);
+}
+
+void HttpContainerIDF::feed_wdt() {
+  // Tests to see if the executing task has a watchdog timer attached
+  if (esp_task_wdt_status(nullptr) == ESP_OK) {
+    App.feed_wdt();
+  }
 }
 
 }  // namespace http_request

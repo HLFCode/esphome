@@ -8,7 +8,7 @@ namespace hx711 {
 static const char *const TAG = "hx711";
 
 void HX711Sensor::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up HX711 '%s'...", this->name_.c_str());
+  ESP_LOGCONFIG(TAG, "Running setup for '%s'", this->name_.c_str());
   this->sck_pin_->setup();
   this->dout_pin_->setup();
   this->sck_pin_->digital_write(false);
@@ -53,7 +53,7 @@ bool HX711Sensor::read_sensor_(uint32_t *result) {
     }
 
     // Cycle clock pin for gain setting
-    for (uint8_t i = 0; i < this->gain_; i++) {
+    for (uint8_t i = 0; i < static_cast<uint8_t>(this->gain_); i++) {
       this->sck_pin_->digital_write(true);
       delayMicroseconds(1);
       this->sck_pin_->digital_write(false);

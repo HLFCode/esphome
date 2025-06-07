@@ -10,6 +10,7 @@ from esphome.const import (
     CONF_PLATFORM_VERSION,
     CONF_SOURCE,
     CONF_VERSION,
+    CONF_WATCHDOG_TIMEOUT,
     KEY_CORE,
     KEY_FRAMEWORK_VERSION,
     KEY_TARGET_FRAMEWORK,
@@ -17,7 +18,7 @@ from esphome.const import (
     PLATFORM_RP2040,
 )
 from esphome.core import CORE, EsphomeError, coroutine_with_priority
-from esphome.helpers import copy_file_if_changed, mkdir_p, write_file, read_file
+from esphome.helpers import copy_file_if_changed, mkdir_p, read_file, write_file
 
 from .const import KEY_BOARD, KEY_PIO_FILES, KEY_RP2040, rp2040_ns
 
@@ -27,6 +28,7 @@ from .gpio import rp2040_pin_to_code  # noqa
 _LOGGER = logging.getLogger(__name__)
 CODEOWNERS = ["@jesserockz"]
 AUTO_LOAD = ["preferences"]
+IS_TARGET_PLATFORM = True
 
 
 def set_core_data(config):
@@ -146,6 +148,10 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.Required(CONF_BOARD): cv.string_strict,
             cv.Optional(CONF_FRAMEWORK, default={}): ARDUINO_FRAMEWORK_SCHEMA,
+            cv.Optional(CONF_WATCHDOG_TIMEOUT, default="8388ms"): cv.All(
+                cv.positive_time_period_milliseconds,
+                cv.Range(max=cv.TimePeriod(milliseconds=8388)),
+            ),
         }
     ),
     set_core_data,
@@ -187,6 +193,8 @@ async def to_code(config):
         "USE_ARDUINO_VERSION_CODE",
         cg.RawExpression(f"VERSION_CODE({ver.major}, {ver.minor}, {ver.patch})"),
     )
+
+    cg.add_define("USE_RP2040_WATCHDOG_TIMEOUT", config[CONF_WATCHDOG_TIMEOUT])
 
 
 def add_pio_file(component: str, key: str, data: str):

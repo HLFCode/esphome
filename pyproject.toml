@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools==69.2.0", "wheel~=0.43.0"]
+requires = ["setuptools==80.9.0", "wheel>=0.43,<0.46"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name        = "esphome"
 license     = {text = "MIT"}
-description = "Make creating custom firmwares for ESP32/ESP8266 super easy."
+description = "ESPHome is a system to configure your microcontrollers by simple yet powerful configuration files and control them remotely through Home Automation systems."
 readme      = "README.md"
 authors     = [
-  {name = "The ESPHome Authors", email = "esphome@nabucasa.com"}
+  {name = "The ESPHome Authors", email = "esphome@openhomefoundation.org"}
 ]
 keywords    = ["home", "automation"]
 classifiers = [
@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Home Automation",
 ]
-requires-python = ">=3.9.0"
+requires-python = ">=3.10.0"
 
 dynamic = ["dependencies", "optional-dependencies", "version"]
 
@@ -43,17 +43,14 @@ include-package-data = true
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
-optional-dependencies.dev = { file = ["requirements_dev.txt"] }
-optional-dependencies.test = { file = ["requirements_test.txt"] }
-optional-dependencies.displays = { file = ["requirements_optional.txt"] }
 version = {attr = "esphome.const.__version__"}
+
+[tool.setuptools.dynamic.optional-dependencies]
+dev = { file = ["requirements_dev.txt"] }
+test = { file = ["requirements_test.txt"] }
 
 [tool.setuptools.packages.find]
 include = ["esphome*"]
-
-[tool.black]
-target-version = ["py39", "py310"]
-exclude = 'generated'
 
 [tool.pytest.ini_options]
 testpaths = [
@@ -65,7 +62,7 @@ addopts = [
 ]
 
 [tool.pylint.MAIN]
-py-version = "3.9"
+py-version = "3.10"
 ignore = [
   "api_pb2.py",
 ]
@@ -88,6 +85,7 @@ disable = [
   "too-many-branches",
   "too-many-statements",
   "too-many-arguments",
+  "too-many-positional-arguments",
   "too-many-return-statements",
   "too-many-instance-attributes",
   "duplicate-code",
@@ -108,6 +106,8 @@ expected-line-ending-format = "LF"
 
 [tool.ruff]
 required-version = ">=0.5.0"
+target-version = "py310"
+exclude = ['generated']
 
 [tool.ruff.lint]
 select = [

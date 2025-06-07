@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from ipaddress import AddressValueError, IPv4Address, ip_address
 import logging
 import os
 import re
@@ -55,7 +56,6 @@ from esphome.const import (
     KEY_CORE,
     KEY_FRAMEWORK_VERSION,
     KEY_TARGET_FRAMEWORK,
-    KEY_TARGET_PLATFORM,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
     PLATFORM_RP2040,
@@ -67,7 +67,6 @@ from esphome.const import (
 from esphome.core import (
     CORE,
     HexInt,
-    IPAddress,
     Lambda,
     TimePeriod,
     TimePeriodMicroseconds,
@@ -117,7 +116,7 @@ RequiredFieldInvalid = vol.RequiredFieldInvalid
 ROOT_CONFIG_PATH = object()
 
 RESERVED_IDS = [
-    # C++ keywords http://en.cppreference.com/w/cpp/keyword
+    # C++ keywords https://en.cppreference.com/w/cpp/keyword
     "alarm",
     "alignas",
     "alignof",
@@ -983,23 +982,32 @@ def uuid(value):
 
 
 METRIC_SUFFIXES = {
-    "E": 1e18,
-    "P": 1e15,
-    "T": 1e12,
-    "G": 1e9,
-    "M": 1e6,
-    "k": 1e3,
-    "da": 10,
-    "d": 1e-1,
-    "c": 1e-2,
-    "m": 0.001,
-    "µ": 1e-6,
-    "u": 1e-6,
-    "n": 1e-9,
-    "p": 1e-12,
-    "f": 1e-15,
-    "a": 1e-18,
-    "": 1,
+    "Q": 1e30,  # Quetta
+    "R": 1e27,  # Ronna
+    "Y": 1e24,  # Yotta
+    "Z": 1e21,  # Zetta
+    "E": 1e18,  # Exa
+    "P": 1e15,  # Peta
+    "T": 1e12,  # Tera
+    "G": 1e9,  # Giga
+    "M": 1e6,  # Mega
+    "k": 1e3,  # Kilo
+    "h": 1e2,  # Hecto
+    "da": 1e1,  # Deca
+    "": 1e0,  # No prefix
+    "d": 1e-1,  # Deci
+    "c": 1e-2,  # Centi
+    "m": 1e-3,  # Milli
+    "µ": 1e-6,  # Micro
+    "u": 1e-6,  # Micro (same as µ)
+    "n": 1e-9,  # Nano
+    "p": 1e-12,  # Pico
+    "f": 1e-15,  # Femto
+    "a": 1e-18,  # Atto
+    "z": 1e-21,  # Zepto
+    "y": 1e-24,  # Yocto
+    "r": 1e-27,  # Ronto
+    "q": 1e-30,  # Quecto
 }
 
 
@@ -1130,7 +1138,7 @@ def domain(value):
     if re.match(vol.DOMAIN_REGEX, value) is not None:
         return value
     try:
-        return str(ipv4(value))
+        return str(ipaddress(value))
     except Invalid as err:
         raise Invalid(f"Invalid domain: {value}") from err
 
@@ -1160,21 +1168,29 @@ def ssid(value):
     return value
 
 
-def ipv4(value):
-    if isinstance(value, list):
-        parts = value
-    elif isinstance(value, str):
-        parts = value.split(".")
-    elif isinstance(value, IPAddress):
-        return value
-    else:
-        raise Invalid("IPv4 address must consist of either string or integer list")
-    if len(parts) != 4:
-        raise Invalid("IPv4 address must consist of four point-separated integers")
-    parts_ = list(map(int, parts))
-    if not all(0 <= x < 256 for x in parts_):
-        raise Invalid("IPv4 address parts must be in range from 0 to 255")
-    return IPAddress(*parts_)
+def ipv4address(value):
+    try:
+        address = IPv4Address(value)
+    except AddressValueError as exc:
+        raise Invalid(f"{value} is not a valid IPv4 address") from exc
+    return address
+
+
+def ipv4address_multi_broadcast(value):
+    address = ipv4address(value)
+    if not (address.is_multicast or (address == IPv4Address("255.255.255.255"))):
+        raise Invalid(
+            f"{value} is not a multicasst address nor local broadcast address"
+        )
+    return address
+
+
+def ipaddress(value):
+    try:
+        address = ip_address(value)
+    except ValueError as exc:
+        raise Invalid(f"{value} is not a valid IP address") from exc
+    return address
 
 
 def _valid_topic(value):
@@ -1215,8 +1231,7 @@ def subscribe_topic(value):
         if index != len(value) - 1:
             # If there are multiple wildcards, this will also trigger
             raise Invalid(
-                "Multi-level wildcard must be the last "
-                "character in the topic filter."
+                "Multi-level wildcard must be the last character in the topic filter."
             )
         if len(value) > 1 and value[index - 1] != "/":
             raise Invalid("Multi-level wildcard must be after a topic level separator.")
@@ -1492,29 +1507,8 @@ def dimensions(value):
 
 
 def directory(value):
-    import json
-
     value = string(value)
     path = CORE.relative_config_path(value)
-
-    if CORE.vscode and (
-        not CORE.ace or os.path.abspath(path) == os.path.abspath(CORE.config_path)
-    ):
-        print(
-            json.dumps(
-                {
-                    "type": "check_directory_exists",
-                    "path": path,
-                }
-            )
-        )
-        data = json.loads(input())
-        assert data["type"] == "directory_exists_response"
-        if data["content"]:
-            return value
-        raise Invalid(
-            f"Could not find directory '{path}'. Please make sure it exists (full path: {os.path.abspath(path)})."
-        )
 
     if not os.path.exists(path):
         raise Invalid(
@@ -1528,29 +1522,8 @@ def directory(value):
 
 
 def file_(value):
-    import json
-
     value = string(value)
     path = CORE.relative_config_path(value)
-
-    if CORE.vscode and (
-        not CORE.ace or os.path.abspath(path) == os.path.abspath(CORE.config_path)
-    ):
-        print(
-            json.dumps(
-                {
-                    "type": "check_file_exists",
-                    "path": path,
-                }
-            )
-        )
-        data = json.loads(input())
-        assert data["type"] == "file_exists_response"
-        if data["content"]:
-            return value
-        raise Invalid(
-            f"Could not find file '{path}'. Please make sure it exists (full path: {os.path.abspath(path)})."
-        )
 
     if not os.path.exists(path):
         raise Invalid(
@@ -1634,110 +1607,39 @@ class GenerateID(Optional):
         super().__init__(key, default=lambda: None)
 
 
-def _get_priority_default(*args):
-    for arg in args:
-        if arg is not vol.UNDEFINED:
-            return arg
-    return vol.UNDEFINED
+def _get_default_key(*args):
+    return ["_".join([CORE.target_platform] + list(args))]
 
 
 class SplitDefault(Optional):
     """Mark this key to have a split default for ESP8266/ESP32."""
 
-    def __init__(
-        self,
-        key,
-        esp8266=vol.UNDEFINED,
-        esp32=vol.UNDEFINED,
-        esp32_arduino=vol.UNDEFINED,
-        esp32_idf=vol.UNDEFINED,
-        esp32_s2=vol.UNDEFINED,
-        esp32_s2_arduino=vol.UNDEFINED,
-        esp32_s2_idf=vol.UNDEFINED,
-        esp32_s3=vol.UNDEFINED,
-        esp32_s3_arduino=vol.UNDEFINED,
-        esp32_s3_idf=vol.UNDEFINED,
-        esp32_c3=vol.UNDEFINED,
-        esp32_c3_arduino=vol.UNDEFINED,
-        esp32_c3_idf=vol.UNDEFINED,
-        rp2040=vol.UNDEFINED,
-        bk72xx=vol.UNDEFINED,
-        rtl87xx=vol.UNDEFINED,
-        host=vol.UNDEFINED,
-    ):
+    def __init__(self, key, **kwargs):
         super().__init__(key)
-        self._esp8266_default = vol.default_factory(esp8266)
-        self._esp32_arduino_default = vol.default_factory(
-            _get_priority_default(esp32_arduino, esp32)
-        )
-        self._esp32_idf_default = vol.default_factory(
-            _get_priority_default(esp32_idf, esp32)
-        )
-        self._esp32_s2_arduino_default = vol.default_factory(
-            _get_priority_default(esp32_s2_arduino, esp32_s2, esp32_arduino, esp32)
-        )
-        self._esp32_s2_idf_default = vol.default_factory(
-            _get_priority_default(esp32_s2_idf, esp32_s2, esp32_idf, esp32)
-        )
-        self._esp32_s3_arduino_default = vol.default_factory(
-            _get_priority_default(esp32_s3_arduino, esp32_s3, esp32_arduino, esp32)
-        )
-        self._esp32_s3_idf_default = vol.default_factory(
-            _get_priority_default(esp32_s3_idf, esp32_s3, esp32_idf, esp32)
-        )
-        self._esp32_c3_arduino_default = vol.default_factory(
-            _get_priority_default(esp32_c3_arduino, esp32_c3, esp32_arduino, esp32)
-        )
-        self._esp32_c3_idf_default = vol.default_factory(
-            _get_priority_default(esp32_c3_idf, esp32_c3, esp32_idf, esp32)
-        )
-        self._rp2040_default = vol.default_factory(rp2040)
-        self._bk72xx_default = vol.default_factory(bk72xx)
-        self._rtl87xx_default = vol.default_factory(rtl87xx)
-        self._host_default = vol.default_factory(host)
+
+        self._defaults = {}
+
+        for platform_key, value in kwargs.items():
+            self._defaults[platform_key] = vol.default_factory(value)
 
     @property
     def default(self):
-        if CORE.is_esp8266:
-            return self._esp8266_default
+        keys = []
         if CORE.is_esp32:
             from esphome.components.esp32 import get_esp32_variant
-            from esphome.components.esp32.const import (
-                VARIANT_ESP32C3,
-                VARIANT_ESP32S2,
-                VARIANT_ESP32S3,
-            )
+            from esphome.components.esp32.const import VARIANT_ESP32
 
-            variant = get_esp32_variant()
-            if variant == VARIANT_ESP32S2:
-                if CORE.using_arduino:
-                    return self._esp32_s2_arduino_default
-                if CORE.using_esp_idf:
-                    return self._esp32_s2_idf_default
-            elif variant == VARIANT_ESP32S3:
-                if CORE.using_arduino:
-                    return self._esp32_s3_arduino_default
-                if CORE.using_esp_idf:
-                    return self._esp32_s3_idf_default
-            elif variant == VARIANT_ESP32C3:
-                if CORE.using_arduino:
-                    return self._esp32_c3_arduino_default
-                if CORE.using_esp_idf:
-                    return self._esp32_c3_idf_default
-            else:
-                if CORE.using_arduino:
-                    return self._esp32_arduino_default
-                if CORE.using_esp_idf:
-                    return self._esp32_idf_default
-        if CORE.is_rp2040:
-            return self._rp2040_default
-        if CORE.is_bk72xx:
-            return self._bk72xx_default
-        if CORE.is_rtl87xx:
-            return self._rtl87xx_default
-        if CORE.is_host:
-            return self._host_default
-        raise NotImplementedError
+            variant = get_esp32_variant().replace(VARIANT_ESP32, "").lower()
+            framework = CORE.target_framework.replace("esp-", "")
+            if variant:
+                keys += _get_default_key(variant, framework)
+                keys += _get_default_key(variant)
+            keys += _get_default_key(framework)
+        keys += _get_default_key()
+        for key in keys:
+            if self._defaults.get(key) is not None:
+                return self._defaults[key]
+        return vol.default_factory(vol.UNDEFINED)
 
     @default.setter
     def default(self, value):
@@ -1839,8 +1741,6 @@ def validate_registry_entry(name, registry):
 def none(value):
     if value in ("none", "None"):
         return None
-    if boolean(value) is False:
-        return None
     raise Invalid("Must be none")
 
 
@@ -1912,17 +1812,23 @@ MQTT_COMMAND_COMPONENT_SCHEMA = MQTT_COMPONENT_SCHEMA.extend(
     }
 )
 
+
+def _validate_entity_name(value):
+    value = string(value)
+    try:
+        value = none(value)  # pylint: disable=assignment-from-none
+    except Invalid:
+        pass
+    else:
+        requires_friendly_name(
+            "Name cannot be None when esphome->friendly_name is not set!"
+        )(value)
+    return value
+
+
 ENTITY_BASE_SCHEMA = Schema(
     {
-        Optional(CONF_NAME): Any(
-            All(
-                none,
-                requires_friendly_name(
-                    "Name cannot be None when esphome->friendly_name is not set!"
-                ),
-            ),
-            string,
-        ),
+        Optional(CONF_NAME): _validate_entity_name,
         Optional(CONF_INTERNAL): boolean,
         Optional(CONF_DISABLED_BY_DEFAULT, default=False): boolean,
         Optional(CONF_ICON): icon,
@@ -2044,70 +1950,28 @@ def platformio_version_constraint(value):
 
 def require_framework_version(
     *,
-    esp_idf=None,
-    esp32_arduino=None,
-    esp8266_arduino=None,
-    rp2040_arduino=None,
-    bk72xx_libretiny=None,
-    host=None,
     max_version=False,
     extra_message=None,
+    **kwargs,
 ):
     def validator(value):
         core_data = CORE.data[KEY_CORE]
         framework = core_data[KEY_TARGET_FRAMEWORK]
-        if framework == "esp-idf":
-            if esp_idf is None:
-                msg = "This feature is incompatible with esp-idf"
-                if extra_message:
-                    msg += f". {extra_message}"
-                raise Invalid(msg)
-            required = esp_idf
-        elif CORE.is_bk72xx and framework == "arduino":
-            if bk72xx_libretiny is None:
-                msg = "This feature is incompatible with BK72XX"
-                if extra_message:
-                    msg += f". {extra_message}"
-                raise Invalid(msg)
-            required = bk72xx_libretiny
-        elif CORE.is_esp32 and framework == "arduino":
-            if esp32_arduino is None:
-                msg = "This feature is incompatible with ESP32 using arduino framework"
-                if extra_message:
-                    msg += f". {extra_message}"
-                raise Invalid(msg)
-            required = esp32_arduino
-        elif CORE.is_esp8266 and framework == "arduino":
-            if esp8266_arduino is None:
-                msg = "This feature is incompatible with ESP8266"
-                if extra_message:
-                    msg += f". {extra_message}"
-                raise Invalid(msg)
-            required = esp8266_arduino
-        elif CORE.is_rp2040 and framework == "arduino":
-            if rp2040_arduino is None:
-                msg = "This feature is incompatible with RP2040"
-                if extra_message:
-                    msg += f". {extra_message}"
-                raise Invalid(msg)
-            required = rp2040_arduino
-        elif CORE.is_host and framework == "host":
-            if host is None:
-                msg = "This feature is incompatible with host platform"
-                if extra_message:
-                    msg += f". {extra_message}"
-                raise Invalid(msg)
-            required = host
-        else:
-            raise Invalid(
-                f"""
-            Internal Error: require_framework_version does not support this platform configuration
-                platform: {core_data[KEY_TARGET_PLATFORM]}
-                framework: {framework}
 
-            Please report this issue on GitHub -> https://github.com/esphome/issues/issues/new?template=bug_report.yml.
-            """
-            )
+        if CORE.is_host and framework == "host":
+            key = "host"
+        elif framework == "esp-idf":
+            key = "esp_idf"
+        else:
+            key = CORE.target_platform + "_" + framework
+
+        if key not in kwargs:
+            msg = f"This feature is incompatible with {CORE.target_platform.upper()} using {framework} framework"
+            if extra_message:
+                msg += f". {extra_message}"
+            raise Invalid(msg)
+
+        required = kwargs[key]
 
         if max_version:
             if core_data[KEY_FRAMEWORK_VERSION] > required:
@@ -2214,6 +2078,29 @@ def rename_key(old_key, new_key):
         config = config.copy()
         if old_key in config:
             config[new_key] = config.pop(old_key)
+        return config
+
+    return validator
+
+
+# Remove before 2025.11.0
+def deprecated_schema_constant(entity_type: str):
+    def validator(config):
+        type: str = "unknown"
+        if (id := config.get(CONF_ID)) is not None and isinstance(id, core.ID):
+            type = str(id.type).split("::", maxsplit=1)[0]
+        _LOGGER.warning(
+            "Using `%s.%s_SCHEMA` is deprecated and will be removed in ESPHome 2025.11.0. "
+            "Please use `%s.%s_schema(...)` instead. "
+            "If you are seeing this, report an issue to the external_component author and ask them to update it. "
+            "https://developers.esphome.io/blog/2025/05/14/_schema-deprecations/. "
+            "Component using this schema: %s",
+            entity_type,
+            entity_type.upper(),
+            entity_type,
+            entity_type,
+            type,
+        )
         return config
 
     return validator
