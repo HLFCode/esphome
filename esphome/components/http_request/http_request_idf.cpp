@@ -155,16 +155,16 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
     return nullptr;
   }
 
-  App.feed_wdt();
+  container->feed_wdt();
   // calling esp_http_client_fetch_headers can result in a
   // "HTTP_CLIENT: Body received in fetch header state, 0xXXXXXXX, nnn" message
   // nnn is the size of the body retrieved
   // Even though this client already has the response body it still
   // needs to be "read"
   container->content_length = esp_http_client_fetch_headers(client);
-  App.feed_wdt();
+  container->feed_wdt();
   container->status_code = esp_http_client_get_status_code(client);
-  App.feed_wdt();
+  container->feed_wdt();
 
   // Check for a chunked response where the content length could be 0 or negative
   if (esp_http_client_is_chunked_response(client)) {
@@ -200,11 +200,11 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::start(std::string url, std::strin
         return nullptr;
       }
 
-      App.feed_wdt();
+      container->feed_wdt();
       container->content_length = esp_http_client_fetch_headers(client);
-      App.feed_wdt();
+      container->feed_wdt();
       container->status_code = esp_http_client_get_status_code(client);
-      App.feed_wdt();
+      container->feed_wdt();
 
       // Check for a chunked response where the content length could be 0 or negative
       if (esp_http_client_is_chunked_response(client)) {
@@ -246,7 +246,7 @@ int HttpContainerIDF::read(uint8_t *buf, size_t max_len) {
     return 0;
   }
 
-  App.feed_wdt();
+  this->feed_wdt();
   int read_len = esp_http_client_read(this->client_, (char *) buf, max_chars_to_read);
   this->bytes_read_ += read_len;
 
