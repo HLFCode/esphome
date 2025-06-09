@@ -1,7 +1,7 @@
 from esphome import automation
 import esphome.codegen as cg
 from esphome.components import esp32
-from esphome.components.const import CONF_REQUEST_HEADERS
+from esphome.components.const import CONF_REQUEST_HEADERS 
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_ESP8266_DISABLE_SSL_SUPPORT,
