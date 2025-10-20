@@ -61,6 +61,11 @@ from helpers import (
     root_path,
 )
 
+# Threshold for splitting clang-tidy jobs
+# For small PRs (< 65 files), use nosplit for faster CI
+# For large PRs (>= 65 files), use split for better parallelization
+CLANG_TIDY_SPLIT_THRESHOLD = 65
+
 
 class Platform(StrEnum):
     """Platform identifiers for memory impact analysis."""
@@ -208,6 +213,22 @@ def should_run_clang_tidy(branch: str | None = None) -> bool:
         return True
 
     return _any_changed_file_endswith(branch, CPP_FILE_EXTENSIONS)
+
+
+def count_changed_cpp_files(branch: str | None = None) -> int:
+    """Count the number of changed C++ files.
+
+    This is used to determine whether to split clang-tidy jobs or run them as a single job.
+    For PRs with < 65 changed C++ files, running a single job is faster than splitting.
+
+    Args:
+        branch: Branch to compare against. If None, uses default.
+
+    Returns:
+        Number of changed C++ files.
+    """
+    files = changed_files(branch)
+    return sum(1 for file in files if file.endswith(CPP_FILE_EXTENSIONS))
 
 
 def should_run_clang_format(branch: str | None = None) -> bool:
@@ -412,6 +433,7 @@ def main() -> None:
     run_clang_tidy = should_run_clang_tidy(args.branch)
     run_clang_format = should_run_clang_format(args.branch)
     run_python_linters = should_run_python_linters(args.branch)
+    changed_cpp_file_count = count_changed_cpp_files(args.branch)
 
     # Get both directly changed and all changed components (with dependencies) in one call
     script_path = Path(__file__).parent / "list-components.py"
@@ -449,10 +471,19 @@ def main() -> None:
     # Detect components for memory impact analysis (merged config)
     memory_impact = detect_memory_impact_config(args.branch)
 
+    if run_clang_tidy:
+        if changed_cpp_file_count < CLANG_TIDY_SPLIT_THRESHOLD:
+            clang_tidy_mode = "nosplit"
+        else:
+            clang_tidy_mode = "split"
+    else:
+        clang_tidy_mode = "disabled"
+
     # Build output
     output: dict[str, Any] = {
         "integration_tests": run_integration,
         "clang_tidy": run_clang_tidy,
+        "clang_tidy_mode": clang_tidy_mode,
         "clang_format": run_clang_format,
         "python_linters": run_python_linters,
         "changed_components": changed_components,
@@ -462,6 +493,7 @@ def main() -> None:
         "component_test_count": len(changed_components_with_tests),
         "directly_changed_count": len(directly_changed_with_tests),
         "dependency_only_count": len(dependency_only_components),
+        "changed_cpp_file_count": changed_cpp_file_count,
         "memory_impact": memory_impact,
     }
 
