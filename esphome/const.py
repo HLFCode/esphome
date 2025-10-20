@@ -4,7 +4,7 @@ from enum import Enum
 
 from esphome.enum import StrEnum
 
-__version__ = "2025.10.1"
+__version__ = "2025.10.2"
 
 ALLOWED_NAME_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-_"
 VALID_SUBSTITUTIONS_CHARACTERS = (
@@ -696,6 +696,7 @@ CONF_OPEN_DRAIN = "open_drain"
 CONF_OPEN_DRAIN_INTERRUPT = "open_drain_interrupt"
 CONF_OPEN_DURATION = "open_duration"
 CONF_OPEN_ENDSTOP = "open_endstop"
+CONF_OPENTHREAD = "openthread"
 CONF_OPERATION = "operation"
 CONF_OPTIMISTIC = "optimistic"
 CONF_OPTION = "option"
