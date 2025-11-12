@@ -4,7 +4,7 @@ from enum import Enum
 
 from esphome.enum import StrEnum
 
-__version__ = "2025.10.5"
+__version__ = "2025.11.0b1"
 
 ALLOWED_NAME_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-_"
 VALID_SUBSTITUTIONS_CHARACTERS = (
@@ -471,6 +471,7 @@ CONF_IMPORT_REACTIVE_ENERGY = "import_reactive_energy"
 CONF_INC_PIN = "inc_pin"
 CONF_INCLUDE_INTERNAL = "include_internal"
 CONF_INCLUDES = "includes"
+CONF_INCLUDES_C = "includes_c"
 CONF_INDEX = "index"
 CONF_INDOOR = "indoor"
 CONF_INFRARED = "infrared"
@@ -1299,6 +1300,7 @@ DEVICE_CLASS_SULPHUR_DIOXIDE = "sulphur_dioxide"
 DEVICE_CLASS_SWITCH = "switch"
 DEVICE_CLASS_TAMPER = "tamper"
 DEVICE_CLASS_TEMPERATURE = "temperature"
+DEVICE_CLASS_TEMPERATURE_DELTA = "temperature_delta"
 DEVICE_CLASS_TIMESTAMP = "timestamp"
 DEVICE_CLASS_UPDATE = "update"
 DEVICE_CLASS_VIBRATION = "vibration"
