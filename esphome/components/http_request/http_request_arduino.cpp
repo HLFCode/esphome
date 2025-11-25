@@ -138,6 +138,7 @@ std::shared_ptr<HttpContainer> HttpRequestArduino::perform(const std::string &ur
   }
 
   int content_length = container->client_.getSize();
+  container->response_chunked = (bool) (content_length < 0);
   ESP_LOGD(TAG, "Content-Length: %d", content_length);
   container->content_length = (size_t) content_length;
   container->duration_ms = millis() - start;
@@ -146,6 +147,20 @@ std::shared_ptr<HttpContainer> HttpRequestArduino::perform(const std::string &ur
 }
 
 int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
+  /*
+  This is repeatedly called by 'play' until buf is full (max_len=0) or this returns 0
+  Chunked data:
+    max_len will be as large as possible so buf can be filled as defined by this method
+    The stream data has the length at the start of the chunk (so we need to read some of it to find out how long it is)
+    The length information is one or two byes, ascii encoded, terminated by cr,lf
+  Non-chunked data:
+    max_len is always sized so that stream reads won't be larger than the server will be sending
+    Non-chunked data has a known length (container->content_length)
+
+  For both chunked and non-chunked the data might already be in the stream or be sent in delayed packets
+  Either way stream_ptr->readBytes needs to be called with the right buffer start address and exactly the right number
+  of bytes to read
+  */
   const uint32_t start = millis();
   watchdog::WatchdogManager wdm(this->parent_->get_watchdog_timeout());
 
@@ -155,21 +170,117 @@ int HttpContainerArduino::read(uint8_t *buf, size_t max_len) {
     return -1;
   }
 
-  int available_data = stream_ptr->available();
-  int bufsize = std::min(max_len, std::min(this->content_length - this->bytes_read_, (size_t) available_data));
+  int bytes_to_read = 0;
+  int chunk_length = 0;
+  // int available_data = stream_ptr->available();
+  const uint8_t cr = 0x0D;
+  const uint8_t lf = 0x0A;
+  int read_len = 0;  //  current reading index from the start of buf when reading the stream
+  if (this->response_chunked) {
+    // The data is chunked so we don't know how much to read from the stream
+    // There's nothing waiting to be read in the stream so we need to wait until the server sends
+    // at least 3 bytes to find out how long the chunk is
+    bool found_cr = false;
+    int stream_read_count = 0;
+    int count = 0;
+    // we should find the cr after the chunk length within the first 6 bytes...
+    for (int i = 0; i < 6; i++) {
+      count = stream_ptr->readBytes(buf + i, 1);
+      if (count != 1) {
+        ESP_LOGE(TAG, "Error reading chunk length, nothing in stream buffer");
+        return -1;
+      }
+      stream_read_count += count;
+      if (*(buf + i) == cr) {
+        // found the first cr
+        found_cr = true;
+        break;
+      }
+    }
+    if (!found_cr) {
+      ESP_LOGE(TAG, "Unable to find <cr> in the first 6 bytes of the chunk '%s'", (char *) buf);
+      return -1;
+    }
+    chunk_length = std::stoi((char *) buf, 0, 16);
+    if (chunk_length < 0) {
+      ESP_LOGE(TAG, "Found negative chunk length");
+      return -1;
+    }
+    if (chunk_length > (int) max_len) {
+      ESP_LOGE(TAG, "Buffer too small (%d bytes) for chunk of %d bytes", max_len, chunk_length);
+      return -1;
+    }
+    // read the chunk header lf
+    App.feed_wdt();
+    count = stream_ptr->readBytes(buf + stream_read_count, 1);
+    if ((count != 1) || (*(buf + stream_read_count) != lf)) {
+      ESP_LOGE(TAG, "Invalid chunk header, no lf after cr");
+      return -1;
+    }
+    stream_read_count += count;
 
-  if (bufsize == 0) {
+    if (chunk_length == 0) {
+      App.feed_wdt();
+      count = stream_ptr->readBytes(buf + stream_read_count, 2);
+      if (count != 2 || *(buf + stream_read_count) != cr || *(buf + stream_read_count + 1) != lf) {
+        ESP_LOGE(TAG, "Invalid chunk terminator");
+        return -1;
+      }
+      return 0;
+    }
+    bytes_to_read = chunk_length + 2;  // extra 2 bytes for cr-lf terminator
+
+    // bytes_to_read might be larger than the stream buffer so get the data in smaller pieces if necessary
+    int last_read_index = -1;  // value of read_index after the last read
+    while (read_len < bytes_to_read && read_len != last_read_index) {
+      last_read_index = read_len;
+      // limit this read count to the buffer size
+      // TODO: replace 512 with the h/w buffer size (whatever that is)
+      int read_count = std::min(bytes_to_read - read_len, 512);
+      if (read_count + read_len > (int) max_len) {
+        ESP_LOGE(TAG, "Response buffer too small");
+        return -1;
+      }
+      App.feed_wdt();
+      // note we are reading from the start of the original pointer buf thus overwriting the previously
+      // collected chunk length header
+      int this_read = stream_ptr->readBytes(buf + read_len, read_count);
+      if (this_read <= 0) {
+        break;
+      }
+      read_len += this_read;
+    }
+  } else {
+    // Not chunked so we can safely read a known amount of data as defined by content_length and the bytes already read
+    bytes_to_read = std::min(max_len, this->content_length - this->bytes_read_);
+    App.feed_wdt();
+    read_len = stream_ptr->readBytes(buf, bytes_to_read);
+  }
+
+  if (bytes_to_read == 0) {
     this->duration_ms += (millis() - start);
     return 0;
   }
 
-  App.feed_wdt();
-  int read_len = stream_ptr->readBytes(buf, bufsize);
-  this->bytes_read_ += read_len;
-
   this->duration_ms += (millis() - start);
-
-  return read_len;
+  if (this->response_chunked) {
+    // need to check for and discard the chunk terminator
+    if (read_len < bytes_to_read) {
+      ESP_LOGE(TAG, "Response too short, expected %d, received %d", bytes_to_read, read_len);
+      return -1;
+    }
+    if (*(buf + read_len - 2) != cr || *(buf + read_len - 1) != lf) {
+      ESP_LOGE(TAG, "Invalid chunk termiator");
+      return -1;
+    }
+    // discard the terminator by using chunk_length not read_len
+    this->bytes_read_ += chunk_length;
+    return chunk_length;
+  } else {
+    // not chunked so just keep track of the number of bytes read
+    this->bytes_read_ += read_len;
+    return read_len;
+  }
 }
 
 void HttpContainerArduino::end() {

@@ -1,5 +1,4 @@
 #include "http_request_idf.h"
-
 #ifdef USE_ESP_IDF
 
 #include "esphome/components/network/util.h"
@@ -153,10 +152,22 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
   }
 
   container->feed_wdt();
+
+  // calling esp_http_client_fetch_headers can result in a
+  // "HTTP_CLIENT: Body received in fetch header state, 0xXXXXXXX, nnn" message
+  // nnn is the size of the body retrieved
+  // Even though this client already has the response body it still
+  // needs to be "read"
   container->content_length = esp_http_client_fetch_headers(client);
   container->feed_wdt();
   container->status_code = esp_http_client_get_status_code(client);
   container->feed_wdt();
+
+  // Check for a chunked response where the content length could be 0 or negative
+  if (esp_http_client_is_chunked_response(client)) {
+    container->response_chunked = true;
+  }
+
   container->set_response_headers(user_data.response_headers);
   container->duration_ms = millis() - start;
   if (is_success(container->status_code)) {
@@ -192,6 +203,11 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
       container->feed_wdt();
       container->status_code = esp_http_client_get_status_code(client);
       container->feed_wdt();
+
+      // Check for a chunked response where the content length could be 0 or negative
+      if (esp_http_client_is_chunked_response(client)) {
+        container->response_chunked = true;
+      }
       container->duration_ms = millis() - start;
       if (is_success(container->status_code)) {
         return container;
@@ -214,15 +230,22 @@ int HttpContainerIDF::read(uint8_t *buf, size_t max_len) {
   const uint32_t start = millis();
   watchdog::WatchdogManager wdm(this->parent_->get_watchdog_timeout());
 
-  int bufsize = std::min(max_len, this->content_length - this->bytes_read_);
+  int max_chars_to_read = 0;
+  if (this->response_chunked) {
+    // we don't know how many bytes the server will send with trandfer-encoding chunked
+    // so set the read limit as large as possible
+    max_chars_to_read = max_len;
+  } else {
+    max_chars_to_read = std::min(max_len, this->content_length - this->bytes_read_);
+  }
 
-  if (bufsize == 0) {
+  if (max_chars_to_read == 0) {
     this->duration_ms += (millis() - start);
     return 0;
   }
 
   this->feed_wdt();
-  int read_len = esp_http_client_read(this->client_, (char *) buf, bufsize);
+  int read_len = esp_http_client_read(this->client_, (char *) buf, max_chars_to_read);
   this->feed_wdt();
   this->bytes_read_ += read_len;
 
