@@ -37,8 +37,7 @@
 #include "esphome/components/esp32_improv/esp32_improv_component.h"
 #endif
 
-namespace esphome {
-namespace wifi {
+namespace esphome::wifi {
 
 static const char *const TAG = "wifi";
 
@@ -330,6 +329,19 @@ float WiFiComponent::get_setup_priority() const { return setup_priority::WIFI; }
 
 void WiFiComponent::setup() {
   this->wifi_pre_setup_();
+
+#if defined(USE_ESP32) && defined(USE_WIFI_RUNTIME_POWER_SAVE)
+  // Create semaphore for high-performance mode requests
+  // Start at 0, increment on request, decrement on release
+  this->high_performance_semaphore_ = xSemaphoreCreateCounting(UINT32_MAX, 0);
+  if (this->high_performance_semaphore_ == nullptr) {
+    ESP_LOGE(TAG, "Failed semaphore");
+  }
+
+  // Store the configured power save mode as baseline
+  this->configured_power_save_ = this->power_save_;
+#endif
+
   if (this->enable_on_boot_) {
     this->start();
   } else {
@@ -341,13 +353,14 @@ void WiFiComponent::setup() {
 }
 
 void WiFiComponent::start() {
+  char mac_s[18];
   ESP_LOGCONFIG(TAG,
                 "Starting\n"
                 "  Local MAC: %s",
-                get_mac_address_pretty().c_str());
+                get_mac_address_pretty_into_buffer(mac_s));
   this->last_connected_ = millis();
 
-  uint32_t hash = this->has_sta() ? fnv1_hash(App.get_compilation_time()) : 88491487UL;
+  uint32_t hash = this->has_sta() ? fnv1_hash(App.get_compilation_time_ref().c_str()) : 88491487UL;
 
   this->pref_ = global_preferences->make_preference<wifi::SavedWifiSettings>(hash, true);
 #ifdef USE_WIFI_FAST_CONNECT
@@ -370,6 +383,19 @@ void WiFiComponent::start() {
       ESP_LOGV(TAG, "Setting Output Power Option failed");
     }
 
+#if defined(USE_ESP32) && defined(USE_WIFI_RUNTIME_POWER_SAVE)
+    // Synchronize power_save_ with semaphore state before applying
+    if (this->high_performance_semaphore_ != nullptr) {
+      UBaseType_t semaphore_count = uxSemaphoreGetCount(this->high_performance_semaphore_);
+      if (semaphore_count > 0) {
+        this->power_save_ = WIFI_POWER_SAVE_NONE;
+        this->is_high_performance_mode_ = true;
+      } else {
+        this->power_save_ = this->configured_power_save_;
+        this->is_high_performance_mode_ = false;
+      }
+    }
+#endif
     if (!this->wifi_apply_power_save_()) {
       ESP_LOGV(TAG, "Setting Power Save Option failed");
     }
@@ -524,11 +550,37 @@ void WiFiComponent::loop() {
       }
     }
   }
+
+#if defined(USE_ESP32) && defined(USE_WIFI_RUNTIME_POWER_SAVE)
+  // Check if power save mode needs to be updated based on high-performance requests
+  if (this->high_performance_semaphore_ != nullptr) {
+    // Semaphore count directly represents active requests (starts at 0, increments on request)
+    UBaseType_t semaphore_count = uxSemaphoreGetCount(this->high_performance_semaphore_);
+
+    if (semaphore_count > 0 && !this->is_high_performance_mode_) {
+      // Transition to high-performance mode (no power save)
+      ESP_LOGV(TAG, "Switching to high-performance mode (%" PRIu32 " active %s)", (uint32_t) semaphore_count,
+               semaphore_count == 1 ? "request" : "requests");
+      this->power_save_ = WIFI_POWER_SAVE_NONE;
+      if (this->wifi_apply_power_save_()) {
+        this->is_high_performance_mode_ = true;
+      }
+    } else if (semaphore_count == 0 && this->is_high_performance_mode_) {
+      // Restore to configured power save mode
+      ESP_LOGV(TAG, "Restoring power save mode to configured setting");
+      this->power_save_ = this->configured_power_save_;
+      if (this->wifi_apply_power_save_()) {
+        this->is_high_performance_mode_ = false;
+      }
+    }
+  }
+#endif
 }
 
 WiFiComponent::WiFiComponent() { global_wifi_component = this; }
 
 bool WiFiComponent::has_ap() const { return this->has_ap_; }
+bool WiFiComponent::is_ap_active() const { return this->ap_started_; }
 bool WiFiComponent::has_sta() const { return !this->sta_.empty(); }
 #ifdef USE_WIFI_11KV_SUPPORT
 void WiFiComponent::set_btm(bool btm) { this->btm_ = btm; }
@@ -696,25 +748,25 @@ void WiFiComponent::connect_soon_() {
 
 void WiFiComponent::start_connecting(const WiFiAP &ap) {
   // Log connection attempt at INFO level with priority
-  std::string bssid_formatted;
+  char bssid_s[18];
   int8_t priority = 0;
 
   if (ap.get_bssid().has_value()) {
-    bssid_formatted = format_mac_address_pretty(ap.get_bssid().value().data());
+    format_mac_addr_upper(ap.get_bssid().value().data(), bssid_s);
     priority = this->get_sta_priority(ap.get_bssid().value());
   }
 
   ESP_LOGI(TAG,
            "Connecting to " LOG_SECRET("'%s'") " " LOG_SECRET("(%s)") " (priority %d, attempt %u/%u in phase %s)...",
-           ap.get_ssid().c_str(), ap.get_bssid().has_value() ? bssid_formatted.c_str() : LOG_STR_LITERAL("any"),
-           priority, this->num_retried_ + 1, get_max_retries_for_phase(this->retry_phase_),
+           ap.get_ssid().c_str(), ap.get_bssid().has_value() ? bssid_s : LOG_STR_LITERAL("any"), priority,
+           this->num_retried_ + 1, get_max_retries_for_phase(this->retry_phase_),
            LOG_STR_ARG(retry_phase_to_log_string(this->retry_phase_)));
 
 #ifdef ESPHOME_LOG_HAS_VERBOSE
   ESP_LOGV(TAG, "Connection Params:");
   ESP_LOGV(TAG, "  SSID: '%s'", ap.get_ssid().c_str());
   if (ap.get_bssid().has_value()) {
-    ESP_LOGV(TAG, "  BSSID: %s", format_mac_address_pretty(ap.get_bssid()->data()).c_str());
+    ESP_LOGV(TAG, "  BSSID: %s", bssid_s);
   } else {
     ESP_LOGV(TAG, "  BSSID: Not Set");
   }
@@ -823,8 +875,11 @@ const LogString *get_signal_bars(int8_t rssi) {
 
 void WiFiComponent::print_connect_params_() {
   bssid_t bssid = wifi_bssid();
+  char bssid_s[18];
+  format_mac_addr_upper(bssid.data(), bssid_s);
 
-  ESP_LOGCONFIG(TAG, "  Local MAC: %s", get_mac_address_pretty().c_str());
+  char mac_s[18];
+  ESP_LOGCONFIG(TAG, "  Local MAC: %s", get_mac_address_pretty_into_buffer(mac_s));
   if (this->is_disabled()) {
     ESP_LOGCONFIG(TAG, "  Disabled");
     return;
@@ -845,9 +900,9 @@ void WiFiComponent::print_connect_params_() {
                                                                            "  Gateway: %s\n"
                                                                            "  DNS1: %s\n"
                                                                            "  DNS2: %s",
-                wifi_ssid().c_str(), format_mac_address_pretty(bssid.data()).c_str(), App.get_name().c_str(), rssi,
-                LOG_STR_ARG(get_signal_bars(rssi)), get_wifi_channel(), wifi_subnet_mask_().str().c_str(),
-                wifi_gateway_ip_().str().c_str(), wifi_dns_ip_(0).str().c_str(), wifi_dns_ip_(1).str().c_str());
+                wifi_ssid().c_str(), bssid_s, App.get_name().c_str(), rssi, LOG_STR_ARG(get_signal_bars(rssi)),
+                get_wifi_channel(), wifi_subnet_mask_().str().c_str(), wifi_gateway_ip_().str().c_str(),
+                wifi_dns_ip_(0).str().c_str(), wifi_dns_ip_(1).str().c_str());
 #ifdef ESPHOME_LOG_HAS_VERBOSE
   if (const WiFiAP *config = this->get_selected_sta_(); config && config->get_bssid().has_value()) {
     ESP_LOGV(TAG, "  Priority: %d", this->get_sta_priority(*config->get_bssid()));
@@ -1452,8 +1507,10 @@ void WiFiComponent::log_and_adjust_priority_for_failed_connect_() {
         (old_priority > std::numeric_limits<int8_t>::min()) ? (old_priority - 1) : std::numeric_limits<int8_t>::min();
     this->set_sta_priority(failed_bssid.value(), new_priority);
   }
-  ESP_LOGD(TAG, "Failed " LOG_SECRET("'%s'") " " LOG_SECRET("(%s)") ", priority %d → %d", ssid.c_str(),
-           format_mac_address_pretty(failed_bssid.value().data()).c_str(), old_priority, new_priority);
+  char bssid_s[18];
+  format_mac_addr_upper(failed_bssid.value().data(), bssid_s);
+  ESP_LOGD(TAG, "Failed " LOG_SECRET("'%s'") " " LOG_SECRET("(%s)") ", priority %d → %d", ssid.c_str(), bssid_s,
+           old_priority, new_priority);
 
   // After adjusting priority, check if all priorities are now at minimum
   // If so, clear the vector to save memory and reset for fresh start
@@ -1574,7 +1631,12 @@ bool WiFiComponent::is_connected() {
   return this->state_ == WIFI_COMPONENT_STATE_STA_CONNECTED &&
          this->wifi_sta_connect_status_() == WiFiSTAConnectStatus::CONNECTED && !this->error_from_callback_;
 }
-void WiFiComponent::set_power_save_mode(WiFiPowerSaveMode power_save) { this->power_save_ = power_save; }
+void WiFiComponent::set_power_save_mode(WiFiPowerSaveMode power_save) {
+  this->power_save_ = power_save;
+#if defined(USE_ESP32) && defined(USE_WIFI_RUNTIME_POWER_SAVE)
+  this->configured_power_save_ = power_save;
+#endif
+}
 
 void WiFiComponent::set_passive_scan(bool passive) { this->passive_scan_ = passive; }
 
@@ -1592,6 +1654,38 @@ bool WiFiComponent::is_esp32_improv_active_() {
   return false;
 #endif
 }
+
+#if defined(USE_ESP32) && defined(USE_WIFI_RUNTIME_POWER_SAVE)
+bool WiFiComponent::request_high_performance() {
+  // Already configured for high performance - request satisfied
+  if (this->configured_power_save_ == WIFI_POWER_SAVE_NONE) {
+    return true;
+  }
+
+  // Semaphore initialization failed
+  if (this->high_performance_semaphore_ == nullptr) {
+    return false;
+  }
+
+  // Give the semaphore (non-blocking). This increments the count.
+  return xSemaphoreGive(this->high_performance_semaphore_) == pdTRUE;
+}
+
+bool WiFiComponent::release_high_performance() {
+  // Already configured for high performance - nothing to release
+  if (this->configured_power_save_ == WIFI_POWER_SAVE_NONE) {
+    return true;
+  }
+
+  // Semaphore initialization failed
+  if (this->high_performance_semaphore_ == nullptr) {
+    return false;
+  }
+
+  // Take the semaphore (non-blocking). This decrements the count.
+  return xSemaphoreTake(this->high_performance_semaphore_, 0) == pdTRUE;
+}
+#endif  // USE_ESP32 && USE_WIFI_RUNTIME_POWER_SAVE
 
 #ifdef USE_WIFI_FAST_CONNECT
 bool WiFiComponent::load_fast_connect_settings_(WiFiAP &params) {
@@ -1732,6 +1826,5 @@ bool WiFiScanResult::operator==(const WiFiScanResult &rhs) const { return this->
 
 WiFiComponent *global_wifi_component;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-}  // namespace wifi
-}  // namespace esphome
+}  // namespace esphome::wifi
 #endif
