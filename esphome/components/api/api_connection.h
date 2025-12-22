@@ -296,6 +296,10 @@ class APIConnection final : public APIServerConnection {
   // Helper function to handle authentication completion
   void complete_authentication_();
 
+#ifdef USE_CAMERA
+  void try_send_camera_image_();
+#endif
+
 #ifdef USE_API_HOMEASSISTANT_STATES
   void process_state_subscriptions_();
 #endif
