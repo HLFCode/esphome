@@ -4,7 +4,7 @@ from enum import Enum
 
 from esphome.enum import StrEnum
 
-__version__ = "2025.12.1"
+__version__ = "2025.12.2"
 
 ALLOWED_NAME_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-_"
 VALID_SUBSTITUTIONS_CHARACTERS = (
