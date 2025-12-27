@@ -256,8 +256,10 @@ void WiFiComponent::wifi_loop_() {
     s_sta_was_connected = true;
     ESP_LOGV(TAG, "Connected");
 #ifdef USE_WIFI_LISTENERS
+    String ssid = WiFi.SSID();
+    bssid_t bssid = this->wifi_bssid();
     for (auto *listener : this->connect_state_listeners_) {
-      listener->on_wifi_connect_state(this->wifi_ssid(), this->wifi_bssid());
+      listener->on_wifi_connect_state(StringRef(ssid.c_str(), ssid.length()), bssid);
     }
     // For static IP configurations, notify IP listeners immediately as the IP is already configured
 #ifdef USE_WIFI_MANUAL_IP
@@ -275,8 +277,9 @@ void WiFiComponent::wifi_loop_() {
     s_sta_had_ip = false;
     ESP_LOGV(TAG, "Disconnected");
 #ifdef USE_WIFI_LISTENERS
+    static constexpr uint8_t EMPTY_BSSID[6] = {};
     for (auto *listener : this->connect_state_listeners_) {
-      listener->on_wifi_connect_state("", bssid_t({0, 0, 0, 0, 0, 0}));
+      listener->on_wifi_connect_state(StringRef(), EMPTY_BSSID);
     }
 #endif
   }
